@@ -193,7 +193,7 @@ class _SLACHandler:
             print("INFO (EVSE): Recieved last MNBC_SOUND_IND")
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
-
+            
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
@@ -205,8 +205,10 @@ class _SLACHandler:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
                 self.stop = True  # 모든 스레드를 중지하도록 설정
                 time.sleep(1)  # 중지 시간을 기다림
-                self.sniffThread.join()  # 기존 sniffThread가 종료되었는지 확인
-                self.timeoutThread.join()  # 기존 timeoutThread가 종료되었는지 확인
+                if threading.current_thread() != self.sniffThread:
+                    self.sniffThread.join()  # sniffThread가 현재 스레드가 아닌 경우에만 join() 호출
+                if threading.current_thread() != self.timeoutThread:
+                    self.timeoutThread.join()  # timeoutThread가 현재 스레드가 아닌 경우에만 join() 호출
                 self.evse.restart_slac()  # SLAC 프로세스만 재시작
                 
 
