@@ -148,6 +148,16 @@ class _SLACHandler:
         self.sendAttenCharIndThread = Thread(target=self.keepSendingAttenCharInd)
         self.sendAttenCharIndThread.start()
 
+    def checkForTimeout(self):
+        self.lastMessageTime = time.time()
+        while True:
+            if self.stop:
+                break
+            if time.time() - self.lastMessageTime > self.timeout:
+                print("INFO (EVSE): SLAC timed out, resetting connection...")
+                self.evse.toggleProximity()
+                self.lastMessageTime = time.time()
+
     def keepSendingAttenCharInd(self):
         while self.evse.keep_sending_atten:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND continuously")
