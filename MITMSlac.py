@@ -154,6 +154,9 @@ class _SLACHandler:
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
             time.sleep(0.5)  # 패킷 전송 간격을 조정
 
+    def startSniff(self):
+        sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
+
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage, establishing session")
