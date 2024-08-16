@@ -114,6 +114,11 @@ class EVSE:
         self.slac.start()
         self.slac.sniffThread.join()
         print("INFO (EVSE): Done SLAC")
+        
+    def restart_slac(self):
+        print("INFO (EVSE): Restarting SLAC protocol only")
+        self.slac = _SLACHandler(self)  # SLAC 핸들러를 다시 생성하여 초기화
+        self.start(restart_slac_only=True)  # SLAC만 재시작
 
 
 # Handles all SLAC communications
@@ -201,11 +206,9 @@ class _SLACHandler:
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
-                # SLAC 프로토콜 초기화 및 재시작
                 self.stop = True  # 현재 진행 중인 sniff와 timeout thread를 중지
                 time.sleep(1)  # 짧은 대기 후 재시작
-                self.evse.slac = _SLACHandler(self.evse)  # SLAC 핸들러를 다시 생성하여 초기화
-                self.evse.slac.start() 
+                self.evse.restart_slac()  # SLAC 프로세스만 재시작
                 
 
     def buildSlacParmCnf(self):

@@ -74,17 +74,17 @@ class EVSE:
         self.keep_sending_atten = True  # 패킷을 계속 보낼지 여부를 제어하는 변수
 
   # Start the emulator
-    def start(self):
-        # Initialize the I2C bus for write
-        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
-
-        self.toggleProximity()
-        self.doSLAC()  # SLAC 프로세스를 시작
-        self.doTCP()   # TCP 프로세스를 시작
-        # If NMAP is not done, restart connection
-        if not self.tcp.finishedNMAP:
-            print("INFO (EVSE): Attempting to restart connection...")
-            self.start()
+    def start(self, restart_slac_only=False):
+        if restart_slac_only:
+            self.doSLAC()  # SLAC 프로세스만 재시작
+        else:
+            self.toggleProximity()
+            self.doSLAC()  # SLAC 프로세스를 시작
+            self.doTCP()   # TCP 프로세스를 시작
+            # If NMAP is not done, restart connection
+            if not self.tcp.finishedNMAP:
+                print("INFO (EVSE): Attempting to restart connection...")
+                self.start()
 
     # Close the circuit for the proximity pins
     def closeProximity(self):
@@ -210,11 +210,9 @@ class _SLACHandler:
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
-                # SLAC 프로토콜 초기화 및 재시작
                 self.stop = True  # 현재 진행 중인 sniff와 timeout thread를 중지
                 time.sleep(1)  # 짧은 대기 후 재시작
-                self.evse.slac = _SLACHandler(self.evse)  # SLAC 핸들러를 다시 생성하여 초기화
-                self.evse.slac.start() 
+                self.evse.restart_slac()  # SLAC 프로세스만 재시작
                 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
