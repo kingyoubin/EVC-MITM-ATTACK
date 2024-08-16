@@ -11,9 +11,8 @@ import sys, os
 sys.path.append("./external_libs/HomePlugPWN")
 sys.path.append("./external_libs/V2GInjector/core")
 
-import time
 from threading import Thread
-from scapy.all import sendp, sniff, Ether, Raw, IPv6, UDP
+
 from layers.SECC import *
 from layers.V2G import *
 from layerscapy.HomePlugGP import *
@@ -25,6 +24,7 @@ import xml.etree.ElementTree as ET
 import binascii
 # from smbus import SMBus
 import argparse
+
 
 class EVSE:
 
@@ -41,7 +41,7 @@ class EVSE:
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
         if args.nmap_ports:
-            for arg in args.nmap_ports[0].split(','):
+            for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
                     i1,i2 = arg.split("-")
                     for i in range(int(i1), int(i2)+1):
@@ -71,9 +71,7 @@ class EVSE:
         self.EVSE_PP = 0b1000
         self.ALL_OFF = 0b0
 
-        self.keep_sending_atten = True  # 패킷을 계속 보낼지 여부를 제어하는 변수
-
-  # Start the emulator
+    # Start the emulator
     def start(self, restart_slac_only=False):
         if restart_slac_only:
             print("INFO (EVSE): Restarting SLAC protocol only")
@@ -91,12 +89,12 @@ class EVSE:
     def closeProximity(self):
         if self.modified_cordset:
             print("INFO (EVSE): Closing CP/PP relay connections")
-            # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_PP | self.EVSE_CP)
+           # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_PP | self.EVSE_CP)
         else:
             print("INFO (EVSE): Closing CP relay connection")
             # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_CP)
 
-    # Open the circuit for the proximity pins
+    # Close the circuit for the proximity pins
     def openProximity(self):
         print("INFO (EVSE): Opening CP/PP relay connections")
         # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.ALL_OFF)
@@ -115,12 +113,13 @@ class EVSE:
     # Starts SLAC thread that handles layer 2 comms
     def doSLAC(self):
         self.slac.start()
-        self.slac.sniffThread.join()  # SLAC 프로세스가 끝날 때까지 기다림
+        self.slac.sniffThread.join()
         print("INFO (EVSE): Done SLAC")
         
     def restart_slac(self):
         self.slac = _SLACHandler(self)  # SLAC 핸들러를 다시 생성하여 초기화
         self.start(restart_slac_only=True)  # SLAC만 재시작
+
 
 # Handles all SLAC communications
 class _SLACHandler:
@@ -139,9 +138,6 @@ class _SLACHandler:
         self.correct_mac_address = False  # MAC 주소 일치 여부 플래그
 
     # Starts SLAC process
-    
-    
-
     def start(self):
         self.stop = False
         self.restart_requested = False
@@ -153,7 +149,7 @@ class _SLACHandler:
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
-    
+        
     def restart_slac(self):
         print("INFO (EVSE): Restarting SLAC protocol")
         self.slac.stop = True
@@ -170,12 +166,6 @@ class _SLACHandler:
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
         print("INFO (EVSE): Timeout thread stopped.")
-
-    def keepSendingAttenCharInd(self):
-        while self.evse.keep_sending_atten:
-            print("INFO (EVSE): Sending ATTEN_CHAR_IND continuously")
-            sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
-            time.sleep(0.5)  # 패킷 전송 간격을 조정
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
@@ -194,7 +184,7 @@ class _SLACHandler:
             Thread(target=self.sendSECCResponse).start()
             return True  # SECC 요청을 처리한 후 sniffing을 멈춥니다.
         return self.stop
-
+    
     def sendSECCResponse(self):
         if self.stop:
             print("INFO (EVSE): SLAC is stopping, SECC response aborted.")
@@ -242,7 +232,7 @@ class _SLACHandler:
                 self.correct_mac_address = False  # MAC 주소 불일치
                 self.stop = True  # 모든 스레드를 중지하도록 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
-                
+
     def buildSlacParmCnf(self):
         ethLayer = Ether()
         ethLayer.src = self.sourceMAC
@@ -251,6 +241,7 @@ class _SLACHandler:
         homePlugAVLayer = HomePlugAV()
         homePlugAVLayer.version = 0x01
 
+        # Parameters copied from packet #13 in BMW-i3-Plugin-ChargeStart-UserStop.pcapng
         homePlugLayer = CM_SLAC_PARM_CNF()
         homePlugLayer.MSoundTargetMAC = "ff:ff:ff:ff:ff:ff"
         homePlugLayer.NumberMSounds = 0x0A
@@ -259,6 +250,7 @@ class _SLACHandler:
         homePlugLayer.ForwardingSTA = self.destinationMAC
         homePlugLayer.RunID = self.runID
 
+        # padding?
         rawLayer = Raw()
         rawLayer.load = b"\x00" * 16
 
@@ -357,6 +349,8 @@ class _SLACHandler:
 
         responsePacket = e / ip / udp / secc / seccRM
         return responsePacket
+
+
 
 class _TCPHandler:
     def __init__(self, evse: EVSE):
