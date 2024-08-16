@@ -7,6 +7,10 @@
 
 # need to do this to import the custom SECC and V2G scapy layer
 import sys, os
+
+sys.path.append("./external_libs/HomePlugPWN")
+sys.path.append("./external_libs/V2GInjector/core")
+
 import time
 from threading import Thread
 from scapy.all import sendp, sniff, Ether, Raw, IPv6, UDP
