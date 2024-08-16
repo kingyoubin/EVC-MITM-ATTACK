@@ -144,10 +144,6 @@ class _SLACHandler:
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
 
-        # 계속해서 CM_ATTEN_CHAR_IND 패킷을 전송하는 쓰레드 시작
-        self.sendAttenCharIndThread = Thread(target=self.keepSendingAttenCharInd)
-        self.sendAttenCharIndThread.start()
-
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
         while True:
@@ -184,24 +180,29 @@ class _SLACHandler:
             sendp(self.buildSECCResponse(), iface=self.iface, verbose=0)
 
     def handlePacket(self, pkt):
-        if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
-            return
+            if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
+                return
 
-        self.lastMessageTime = time.time()
+            self.lastMessageTime = time.time()
 
-        if pkt.haslayer("CM_SLAC_PARM_REQ"):
-            print("INFO (EVSE): Recieved SLAC_PARM_REQ")
-            self.destinationMAC = pkt[Ether].src
-            self.runID = pkt[CM_SLAC_PARM_REQ].RunID
-            print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
-            sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
+            if pkt.haslayer("CM_SLAC_PARM_REQ"):
+                print("INFO (EVSE): Recieved SLAC_PARM_REQ")
+                self.destinationMAC = pkt[Ether].src  # 여기서 destinationMAC을 설정
+                self.runID = pkt[CM_SLAC_PARM_REQ].RunID
+                print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
+                sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
 
-        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
-            print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-            self.evse.keep_sending_atten = False  # 패킷 전송 중지
-            print("INFO (EVSE): Sending SLAC_MATCH_CNF and starting session")
-            sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
-            
+            if pkt.haslayer("CM_MNBC_SOUND_IND"):
+                print("INFO (EVSE): Recieved SOUND_IND")
+                if pkt[CM_MNBC_SOUND_IND].Countdown == 0:
+                    print("INFO (EVSE): Sending ATTEN_CHAR_IND in response to SOUND_IND")
+                    sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
+
+            if pkt.haslayer("CM_SLAC_MATCH_REQ"):
+                print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
+                print("INFO (EVSE): Sending SLAC_MATCH_CNF and starting session")
+                sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                
     def buildSlacParmCnf(self):
         ethLayer = Ether()
         ethLayer.src = self.sourceMAC
