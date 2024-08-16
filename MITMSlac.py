@@ -140,7 +140,7 @@ class _SLACHandler:
 
     def start(self):
         self.stop = False
-        print("INFO (EVSE): Sending initial SET_KEY_REQ")
+        print("INFO (EVSE): Sending SET_KEY_REQ")
         sendp(self.buildSetKey(), iface=self.iface, verbose=0)
 
         self.sniffThread = Thread(target=self.startSniff)
@@ -151,13 +151,12 @@ class _SLACHandler:
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
-        while True:
-            if self.stop:
-                break
+        while not self.stop:
             if time.time() - self.lastMessageTime > self.timeout:
                 print("INFO (EVSE): SLAC timed out, resetting connection...")
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
+        print("INFO (EVSE): Timeout thread stopped.")
 
     def keepSendingAttenCharInd(self):
         while self.evse.keep_sending_atten:
@@ -167,15 +166,15 @@ class _SLACHandler:
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
+        print("INFO (EVSE): Sniffing stopped.")
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
-            print("INFO (EVSE): Received SECC_RequestMessage, establishing session")
-            self.evse.keep_sending_atten = False  # 패킷 전송 중지
+            print("INFO (EVSE): Received SECC_RequestMessage")
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
+            self.stop = True  # Sniffing과 timeout을 멈추도록 신호
             Thread(target=self.sendSECCResponse).start()
-            self.stop = True
         return self.stop
 
     def sendSECCResponse(self):
@@ -183,6 +182,7 @@ class _SLACHandler:
         for i in range(3):
             print("INFO (EVSE): Sending SECC_ResponseMessage")
             sendp(self.buildSECCResponse(), iface=self.iface, verbose=0)
+        print("INFO (EVSE): Finished sending SECC_ResponseMessage")
 
     def handlePacket(self, pkt):
         if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
@@ -202,7 +202,6 @@ class _SLACHandler:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
-
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
@@ -212,8 +211,10 @@ class _SLACHandler:
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
-                self.stop = True  # 현재 진행 중인 sniff와 timeout thread를 중지
-                time.sleep(1)  # 짧은 대기 후 재시작
+                self.stop = True  # 모든 스레드를 중지하도록 설정
+                time.sleep(1)  # 중지 시간을 기다림
+                self.sniffThread.join()  # 기존 sniffThread가 종료되었는지 확인
+                self.timeoutThread.join()  # 기존 timeoutThread가 종료되었는지 확인
                 self.evse.restart_slac()  # SLAC 프로세스만 재시작
                 
     def buildSlacParmCnf(self):
