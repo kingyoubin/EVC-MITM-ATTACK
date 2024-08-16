@@ -179,6 +179,7 @@ class _SLACHandler:
             if not self.correct_mac_address:
                 print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
                 return False  # MAC 주소가 다르면 응답하지 않음
+            # SECC 요청을 처리할 준비가 되었으므로 stop을 설정하지 않음
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
             Thread(target=self.sendSECCResponse).start()
@@ -186,6 +187,9 @@ class _SLACHandler:
         return self.stop
     
     def sendSECCResponse(self):
+        if not self.correct_mac_address:
+            print("INFO (EVSE): Incorrect MAC address, SECC response aborted.")
+            return  # MAC 주소가 불일치하면 응답을 중단
         if self.stop:
             print("INFO (EVSE): SLAC is stopping, SECC response aborted.")
             return  # SLAC이 멈추는 중이면 응답을 중단
@@ -225,8 +229,11 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 self.correct_mac_address = True  # MAC 주소 일치 확인
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                # SLAC 프로세스가 성공적으로 종료되었음을 나타냅니다.
                 self.stop = True  # SLAC 프로세스 종료
                 self.restart_requested = False  # 재시작 요청 취소
+                # SLAC 완료 후 TCP 시작
+                self.evse.tcp.start()
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.correct_mac_address = False  # MAC 주소 불일치
