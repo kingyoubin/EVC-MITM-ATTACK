@@ -175,24 +175,55 @@ class _SLACHandler:
         if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
             return
 
-        self.lastMessageTime = time.time()
+        if hasattr(pkt[1][2], "RunID") and pkt[1][2].RunID != self.runID:
+            return
 
-        if pkt.haslayer("CM_SLAC_PARM_REQ"):
-            print("INFO (EVSE): Recieved SLAC_PARM_REQ")
+        if pkt.haslayer("CM_SLAC_PARM_CNF"):
+            print("INFO (PEV) : Recieved SLAC_PARM_CNF")
             self.destinationMAC = pkt[Ether].src
-            self.runID = pkt[CM_SLAC_PARM_REQ].RunID
-            print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
-            sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
+            self.pev.destinationMAC = pkt[Ether].src
+            self.numSounds = pkt[CM_SLAC_PARM_CNF].NumberMSounds
+            self.numRemainingSounds = self.numSounds
+            startSoundsPkts = [self.buildStartAttenCharInd() for i in range(3)]
+            soundPkts = [self.buildMNBCSoundInd() for i in range(self.numSounds)]
+            print("INFO (PEV) : Sending 3 START_ATTEN_CHAR_IND")
+            sendp(startSoundsPkts, iface=self.iface, verbose=0, inter=0.05)
+            print(f"INFO (PEV) : Sending {self.numSounds} MNBC_SOUND_IND")
+            sendp(soundPkts, iface=self.iface, verbose=0, inter=0.05)
+            return
 
-        if pkt.haslayer("CM_MNBC_SOUND_IND") and pkt[CM_MNBC_SOUND_IND].Countdown == 0:
-            print("INFO (EVSE): Recieved last MNBC_SOUND_IND")
-            print("INFO (EVSE): Sending ATTEN_CHAR_IND")
-            sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
+        if pkt.haslayer("CM_ATTEN_CHAR_IND"):
+            print("INFO (PEV) : Recieved ATTEN_CHAR_IND")
+            
+            # 감쇄값 확인 및 비교
+            attenuations = [group.group for group in pkt[CM_ATTEN_CHAR_IND].Groups]
+            average_attenuation = sum(attenuations) / len(attenuations)
+            print(f"INFO (PEV) : Average Attenuation Received: {average_attenuation}")
+            
+            # 특정 감쇄값 이하일 경우에만 계속 진행
+            ATTEN_THRESHOLD = 30  # 이 값은 필요에 따라 조정 가능
+            if average_attenuation <= ATTEN_THRESHOLD:
+                print("INFO (PEV) : Attenuation is acceptable, continuing SLAC process.")
+                self.stopSounds = True
+                print("INFO (PEV) : Sending ATTEN_CHAR_RES")
+                sendp(self.buildAttenCharRes(), iface=self.iface, verbose=0)
+                self.timeSinceLastPkt = time.time()
+                print("INFO (PEV) : Sending SLAC_MATCH_REQ")
+                sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
+                self.timeSinceLastPkt = time.time()
+            else:
+                print("INFO (PEV) : Attenuation is too high, ignoring this EVSE.")
+            return
 
-        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
-            print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-            print("INFO (EVSE): Sending SLAC_MATCH_CNF")
-            sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+        if pkt.haslayer("CM_SLAC_MATCH_CNF"):
+            print("INFO (PEV) : Recieved SLAC_MATCH_CNF")
+            self.NID = pkt[CM_SLAC_MATCH_CNF].VariableField.NetworkID
+            self.NMK = pkt[CM_SLAC_MATCH_CNF].VariableField.NMK
+            print("INFO (PEV) : Sending SET_KEY_REQ")
+            sendp(self.buildSetKeyReq(), iface=self.iface, verbose=0)
+            self.stop = True
+            Thread(target=self.sendSECCRequest).start()
+            return
 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
