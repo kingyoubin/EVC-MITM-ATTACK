@@ -138,6 +138,8 @@ class _SLACHandler:
         self.restart_requested = False  # SLAC 재시작 요청 플래그
 
     # Starts SLAC process
+    
+    
 
     def start(self):
         self.stop = False
@@ -150,6 +152,14 @@ class _SLACHandler:
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
+    
+    def restart_slac(self):
+        print("INFO (EVSE): Restarting SLAC protocol")
+        self.slac.stop = True
+        self.slac.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
+        self.slac.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
+        self.slac = _SLACHandler(self)  # SLAC 핸들러를 새로 초기화합니다.
+        self.slac.start()  # SLAC 프로토콜을 다시 시작합니다.
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
@@ -217,7 +227,7 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
-                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
+                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.stop = True  # 모든 스레드를 중지하도록 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
                 
