@@ -152,9 +152,9 @@ class _SLACHandler:
     def checkForTimeout(self):
         while self.stop == False:
             if time.time() - self.timeSinceLastPkt > self.timeout:
-                print("INFO (PEV) : Timed out... Sending SLAC_PARM_REQ")
-                sendp(self.buildSlacParmReq(), iface=self.iface, verbose=0)
-                self.timeSinceLastPkt = time.time()
+                print("INFO (PEV) : Timed out... Finalizing session")
+                self.finalizeSession()  # 타임아웃 발생 시 세션을 마무리하도록 함
+                return
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
@@ -229,6 +229,7 @@ class _SLACHandler:
         print("INFO (PEV) : Sending SLAC_MATCH_REQ")
         sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
         self.timeSinceLastPkt = time.time()
+
 
     def sendSECCRequest(self):
         time.sleep(3)
