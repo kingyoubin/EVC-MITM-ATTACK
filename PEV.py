@@ -126,7 +126,8 @@ class _SLACHandler:
         self.timeSinceLastPkt = time.time()
         self.timeout = 8  # How long to wait for a message to timeout
         self.stop = False
-
+        self.attenuation_records = []  # 감쇄값 기록
+        
     # This method starts the slac process and will stop
     def start(self):
         self.runID = os.urandom(8)
@@ -187,19 +188,18 @@ class _SLACHandler:
             sendp(startSoundsPkts, iface=self.iface, verbose=0, inter=0.05)
             print(f"INFO (PEV) : Sending {self.numSounds} MNBC_SOUND_IND")
             sendp(soundPkts, iface=self.iface, verbose=0, inter=0.05)
-            # self.stopSounds = False
-            # Thread(target=self.sendSounds).start()
             return
 
         if pkt.haslayer("CM_ATTEN_CHAR_IND"):
-            self.stopSounds = True
-            print("INFO (PEV) : Recieved ATTEN_CHAR_IND")
-            print("INFO (PEV) : Sending ATTEN_CHAR_RES")
-            sendp(self.buildAttenCharRes(), iface=self.iface, verbose=0)
-            self.timeSinceLastPkt = time.time()
-            print("INFO (PEV) : Sending SLAC_MATCH_REQ")
-            sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
-            self.timeSinceLastPkt = time.time()
+            # 감쇄값 확인 및 저장
+            attenuations = [group.group for group in pkt[CM_ATTEN_CHAR_IND].Groups]
+            average_attenuation = sum(attenuations) / len(attenuations)
+            print(f"INFO (PEV) : Average Attenuation Received: {average_attenuation}")
+            self.attenuation_records.append({
+                'average_attenuation': average_attenuation,
+                'destinationMAC': pkt[Ether].src,
+                'pkt': pkt
+            })
             return
 
         if pkt.haslayer("CM_SLAC_MATCH_CNF"):
@@ -211,6 +211,24 @@ class _SLACHandler:
             self.stop = True
             Thread(target=self.sendSECCRequest).start()
             return
+
+    def finalizeSession(self):
+        # 최저 감쇄값을 가진 대상 선택
+        if not self.attenuation_records:
+            print("ERROR (PEV) : No valid attenuation records received.")
+            return
+
+        best_record = min(self.attenuation_records, key=lambda x: x['average_attenuation'])
+        self.destinationMAC = best_record['destinationMAC']
+        print(f"INFO (PEV) : Lowest Attenuation Found: {best_record['average_attenuation']} from MAC {self.destinationMAC}")
+        
+        # 해당 대상과 세션을 계속 진행
+        print("INFO (PEV) : Sending ATTEN_CHAR_RES")
+        sendp(self.buildAttenCharRes(), iface=self.iface, verbose=0)
+        self.timeSinceLastPkt = time.time()
+        print("INFO (PEV) : Sending SLAC_MATCH_REQ")
+        sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
+        self.timeSinceLastPkt = time.time()
 
     def sendSECCRequest(self):
         time.sleep(3)
