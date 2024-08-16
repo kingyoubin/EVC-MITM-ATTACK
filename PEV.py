@@ -124,24 +124,21 @@ class _SLACHandler:
         self.runID = b"\xf4\x00\x37\xd0\x00\x5c\x00\x7f"
 
         self.timeSinceLastPkt = time.time()
-        self.timeout = 10  # 타임아웃 시간을 조금 더 늘림
+        self.timeout = 8  # How long to wait for a message to timeout
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
-        self.max_attempts = 3  # SLAC 프로세스 시도 횟수 제한 추가
-        self.attempts = 0
-        
+
     # This method starts the slac process and will stop
     def start(self):
         self.runID = os.urandom(8)
         self.stop = False
-        # Thread for sniffing packets and handling responses
-        # self.sniffThread = Thread(target=self.startSniff)
-        # self.sniffThread.start()
+        self.attenuation_records.clear()  # 감쇄값 기록 초기화
 
+        # Thread for sniffing packets and handling responses
         self.sniffThread = AsyncSniffer(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
         self.sniffThread.start()
 
-        # Thread to determine if PEV timed out or SLAC error occured and restart SLAC process
+        # Thread to determine if PEV timed out or SLAC error occurred and restart SLAC process
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
 
@@ -150,18 +147,23 @@ class _SLACHandler:
         )
         self.neighborSolicitationThread.start()
 
+        # Send the initial SLAC Parameter Request
+        self.sendSlacParmReq()
+
+    def sendSlacParmReq(self):
+        slac_parm_req_pkt = self.buildSlacParmReq()
+        print("INFO (PEV) : Sending SLAC_PARM_REQ")
+        sendp(slac_parm_req_pkt, iface=self.iface, verbose=0)
+        self.timeSinceLastPkt = time.time()
+
     # The EVSE sometimes fails the SLAC process, so this automatically restarts it from the beginning
     def checkForTimeout(self):
         while self.stop == False:
             if time.time() - self.timeSinceLastPkt > self.timeout:
                 print("INFO (PEV) : Timed out... Finalizing session")
-                self.finalizeSession()  # 타임아웃 발생 시 세션을 마무리하도록 함
+                self.finalizeSession()
                 return
 
-    def startSniff(self):
-        sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
-
-    # Stop the thread when the slac match is done
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_ResponseMessage"):
             self.pev.destinationIP = pkt[SECC_ResponseMessage].TargetAddress
@@ -179,7 +181,7 @@ class _SLACHandler:
             return
 
         if pkt.haslayer("CM_SLAC_PARM_CNF"):
-            print("INFO (PEV) : Recieved SLAC_PARM_CNF")
+            print("INFO (PEV) : Received SLAC_PARM_CNF")
             self.destinationMAC = pkt[Ether].src
             self.pev.destinationMAC = pkt[Ether].src
             self.numSounds = pkt[CM_SLAC_PARM_CNF].NumberMSounds
@@ -193,7 +195,6 @@ class _SLACHandler:
             return
 
         if pkt.haslayer("CM_ATTEN_CHAR_IND"):
-            # 감쇄값 확인 및 저장
             attenuations = [group.group for group in pkt[CM_ATTEN_CHAR_IND].Groups]
             average_attenuation = sum(attenuations) / len(attenuations)
             print(f"INFO (PEV) : Average Attenuation Received: {average_attenuation}")
@@ -202,13 +203,11 @@ class _SLACHandler:
                 'destinationMAC': pkt[Ether].src,
                 'pkt': pkt
             })
-
-            # 최적의 감쇄값을 가진 대상과 세션을 맺음
-            self.finalizeSession()
+            self.timeSinceLastPkt = time.time()
             return
 
         if pkt.haslayer("CM_SLAC_MATCH_CNF"):
-            print("INFO (PEV) : Recieved SLAC_MATCH_CNF")
+            print("INFO (PEV) : Received SLAC_MATCH_CNF")
             self.NID = pkt[CM_SLAC_MATCH_CNF].VariableField.NetworkID
             self.NMK = pkt[CM_SLAC_MATCH_CNF].VariableField.NMK
             print("INFO (PEV) : Sending SET_KEY_REQ")
@@ -218,32 +217,21 @@ class _SLACHandler:
             return
 
     def finalizeSession(self):
-        # 최저 감쇄값을 가진 대상 선택
         if not self.attenuation_records:
             print("ERROR (PEV) : No valid attenuation records received.")
-            self.retrySLAC()
             return
 
         best_record = min(self.attenuation_records, key=lambda x: x['average_attenuation'])
         self.destinationMAC = best_record['destinationMAC']
         print(f"INFO (PEV) : Lowest Attenuation Found: {best_record['average_attenuation']} from MAC {self.destinationMAC}")
-        
-        # 해당 대상과 세션을 계속 진행
+
+        # Proceed with the best target
         print("INFO (PEV) : Sending ATTEN_CHAR_RES")
         sendp(self.buildAttenCharRes(), iface=self.iface, verbose=0)
         self.timeSinceLastPkt = time.time()
         print("INFO (PEV) : Sending SLAC_MATCH_REQ")
         sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
         self.timeSinceLastPkt = time.time()
-
-    def retrySLAC(self):
-        if self.attempts < self.max_attempts:
-            self.attempts += 1
-            print(f"INFO (PEV) : Retrying SLAC process (Attempt {self.attempts}/{self.max_attempts})")
-            self.start()  # SLAC 프로세스를 다시 시작
-        else:
-            print("ERROR (PEV) : SLAC process failed after maximum attempts.")
-            self.stop = True
 
 
     def sendSECCRequest(self):
