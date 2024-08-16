@@ -135,11 +135,13 @@ class _SLACHandler:
 
         self.timeout = 8
         self.stop = False
+        self.restart_requested = False  # SLAC 재시작 요청 플래그
 
     # Starts SLAC process
 
     def start(self):
         self.stop = False
+        self.restart_requested = False
         print("INFO (EVSE): Sending SET_KEY_REQ")
         sendp(self.buildSetKey(), iface=self.iface, verbose=0)
 
@@ -167,10 +169,15 @@ class _SLACHandler:
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
         print("INFO (EVSE): Sniffing stopped.")
+        if self.restart_requested:
+            self.evse.restart_slac()  # SLAC 프로세스만 재시작
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
+            if self.stop:
+                print("INFO (EVSE): SECC_RequestMessage received but SLAC is stopping. Ignoring.")
+                return True  # sniffing을 멈춤
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
             self.stop = True  # Sniffing과 timeout을 멈추도록 신호
@@ -212,10 +219,7 @@ class _SLACHandler:
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
                 self.stop = True  # 모든 스레드를 중지하도록 설정
-                time.sleep(1)  # 중지 시간을 기다림
-                self.sniffThread.join()  # sniffThread가 종료되었는지 확인
-                self.timeoutThread.join()  # timeoutThread가 종료되었는지 확인
-                self.evse.restart_slac()  # SLAC 프로세스만 재시작
+                self.restart_requested = True  # SLAC 재시작 요청 설정
                 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
