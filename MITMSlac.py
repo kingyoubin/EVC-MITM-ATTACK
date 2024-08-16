@@ -233,6 +233,9 @@ class _SLACHandler:
             if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                # 여기서 SLAC가 정상적으로 완료되었음을 나타냅니다.
+                self.stop = True  # SLAC 프로세스 종료
+                self.restart_requested = False  # 재시작 요청 취소
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.stop = True  # 모든 스레드를 중지하도록 설정
