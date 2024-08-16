@@ -192,7 +192,7 @@ class _SLACHandler:
 
         if pkt.haslayer("CM_SLAC_PARM_REQ"):
             print("INFO (EVSE): Recieved SLAC_PARM_REQ")
-            self.destinationMAC = pkt[Ether].src
+            self.destinationMAC = pkt[Ether].src  # destinationMAC 설정
             self.runID = pkt[CM_SLAC_PARM_REQ].RunID
             print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
             sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
@@ -213,10 +213,8 @@ class _SLACHandler:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
                 self.stop = True  # 모든 스레드를 중지하도록 설정
                 time.sleep(1)  # 중지 시간을 기다림
-                if threading.current_thread() != self.sniffThread:
-                    self.sniffThread.join()  # sniffThread가 현재 스레드가 아닌 경우에만 join() 호출
-                if threading.current_thread() != self.timeoutThread:
-                    self.timeoutThread.join()  # timeoutThread가 현재 스레드가 아닌 경우에만 join() 호출
+                self.sniffThread.join()  # sniffThread가 종료되었는지 확인
+                self.timeoutThread.join()  # timeoutThread가 종료되었는지 확인
                 self.evse.restart_slac()  # SLAC 프로세스만 재시작
                 
     def buildSlacParmCnf(self):
