@@ -124,9 +124,11 @@ class _SLACHandler:
         self.runID = b"\xf4\x00\x37\xd0\x00\x5c\x00\x7f"
 
         self.timeSinceLastPkt = time.time()
-        self.timeout = 8  # How long to wait for a message to timeout
+        self.timeout = 10  # 타임아웃 시간을 조금 더 늘림
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
+        self.max_attempts = 3  # SLAC 프로세스 시도 횟수 제한 추가
+        self.attempts = 0
         
     # This method starts the slac process and will stop
     def start(self):
@@ -200,6 +202,9 @@ class _SLACHandler:
                 'destinationMAC': pkt[Ether].src,
                 'pkt': pkt
             })
+
+            # 최적의 감쇄값을 가진 대상과 세션을 맺음
+            self.finalizeSession()
             return
 
         if pkt.haslayer("CM_SLAC_MATCH_CNF"):
@@ -216,6 +221,7 @@ class _SLACHandler:
         # 최저 감쇄값을 가진 대상 선택
         if not self.attenuation_records:
             print("ERROR (PEV) : No valid attenuation records received.")
+            self.retrySLAC()
             return
 
         best_record = min(self.attenuation_records, key=lambda x: x['average_attenuation'])
@@ -229,6 +235,15 @@ class _SLACHandler:
         print("INFO (PEV) : Sending SLAC_MATCH_REQ")
         sendp(self.buildSlacMatchReq(), iface=self.iface, verbose=0)
         self.timeSinceLastPkt = time.time()
+
+    def retrySLAC(self):
+        if self.attempts < self.max_attempts:
+            self.attempts += 1
+            print(f"INFO (PEV) : Retrying SLAC process (Attempt {self.attempts}/{self.max_attempts})")
+            self.start()  # SLAC 프로세스를 다시 시작
+        else:
+            print("ERROR (PEV) : SLAC process failed after maximum attempts.")
+            self.stop = True
 
 
     def sendSECCRequest(self):
