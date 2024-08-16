@@ -191,15 +191,17 @@ class _SLACHandler:
 
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-            # MAC 주소를 확인하여 자신이 대상인지 체크
-            if pkt[CM_SLAC_MATCH_REQ].EVSEMAC == self.sourceMAC:
+
+            # CM_SLAC_MATCH_REQ 패킷의 EVSEMAC 필드를 가져옴
+            evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
+
+            # 자신의 MAC 주소와 비교
+            if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
-                print("INFO (EVSE): The packet is not intended for this EVSE.")
-                print("INFO (EVSE): Restarting to wait for CM_SLAC_PARM_REQ.")
-                # 초기 SLAC 단계로 돌아가기 위해 CM_SLAC_PARM_REQ를 기다림
-                self.startSniff()  # 다시 sniff를 시작하여 CM_SLAC_PARM_REQ 패킷을 기다림
+                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Waiting for another CM_SLAC_PARM_REQ.")
+                # SLAC 프로토콜을 다시 수행하지 않고 그냥 다음 패킷을 기다림
 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
