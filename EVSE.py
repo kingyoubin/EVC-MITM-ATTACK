@@ -135,6 +135,7 @@ class _SLACHandler:
         self.timeout = 8
         self.stop = False
         self.restart_requested = False  # SLAC 재시작 요청 플래그
+        self.correct_mac_address = False  # MAC 주소 일치 여부 플래그
 
     # Starts SLAC process
     def start(self):
@@ -175,15 +176,15 @@ class _SLACHandler:
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
-            if self.stop:
-                print("INFO (EVSE): SECC_RequestMessage received but SLAC is stopping. Ignoring.")
-                return True  # sniffing을 멈춤
+            if not self.correct_mac_address:
+                print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
+                return False  # MAC 주소가 다르면 응답하지 않음
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
-            self.stop = True  # Sniffing과 timeout을 멈추도록 신호
             Thread(target=self.sendSECCResponse).start()
+            return True  # SECC 요청을 처리한 후 sniffing을 멈춥니다.
         return self.stop
-
+    
     def sendSECCResponse(self):
         if self.stop:
             print("INFO (EVSE): SLAC is stopping, SECC response aborted.")
@@ -222,15 +223,15 @@ class _SLACHandler:
 
             if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
+                self.correct_mac_address = True  # MAC 주소 일치 확인
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
-                # 여기서 SLAC가 정상적으로 완료되었음을 나타냅니다.
                 self.stop = True  # SLAC 프로세스 종료
                 self.restart_requested = False  # 재시작 요청 취소
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
+                self.correct_mac_address = False  # MAC 주소 불일치
                 self.stop = True  # 모든 스레드를 중지하도록 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
-                
 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
