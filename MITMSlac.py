@@ -195,6 +195,9 @@ class _SLACHandler:
         return self.stop
 
     def sendSECCResponse(self):
+        if self.stop:
+            print("INFO (EVSE): SLAC is stopping, SECC response aborted.")
+            return  # SLAC이 멈추는 중이면 응답을 중단
         time.sleep(0.2)
         for i in range(3):
             print("INFO (EVSE): Sending SECC_ResponseMessage")
@@ -202,6 +205,10 @@ class _SLACHandler:
         print("INFO (EVSE): Finished sending SECC_ResponseMessage")
 
     def handlePacket(self, pkt):
+        if self.stop:
+            print("INFO (EVSE): SLAC is stopping, ignoring packet.")
+            return  # SLAC이 멈추는 중이면 패킷을 무시
+
         if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
             return
 
