@@ -213,7 +213,8 @@ class _SLACHandler:
                 # SLAC 프로토콜 초기화 및 재시작
                 self.stop = True  # 현재 진행 중인 sniff와 timeout thread를 중지
                 time.sleep(1)  # 짧은 대기 후 재시작
-                self.start()  # SLAC 프로토콜 재시작
+                self.evse.slac = _SLACHandler(self.evse)  # SLAC 핸들러를 다시 생성하여 초기화
+                self.evse.slac.start() 
                 
     def buildSlacParmCnf(self):
         ethLayer = Ether()

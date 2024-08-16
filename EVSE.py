@@ -200,8 +200,13 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
             else:
-                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Waiting for another CM_SLAC_PARM_REQ.")
-                # SLAC 프로토콜을 다시 수행하지 않고 그냥 다음 패킷을 기다림
+                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}). Restarting SLAC protocol.")
+                # SLAC 프로토콜 초기화 및 재시작
+                self.stop = True  # 현재 진행 중인 sniff와 timeout thread를 중지
+                time.sleep(1)  # 짧은 대기 후 재시작
+                self.evse.slac = _SLACHandler(self.evse)  # SLAC 핸들러를 다시 생성하여 초기화
+                self.evse.slac.start() 
+                
 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
