@@ -187,21 +187,27 @@ class _SLACHandler:
 
             if pkt.haslayer("CM_SLAC_PARM_REQ"):
                 print("INFO (EVSE): Recieved SLAC_PARM_REQ")
-                self.destinationMAC = pkt[Ether].src  # 여기서 destinationMAC을 설정
+                self.destinationMAC = pkt[Ether].src
                 self.runID = pkt[CM_SLAC_PARM_REQ].RunID
                 print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
                 sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
 
-            if pkt.haslayer("CM_MNBC_SOUND_IND"):
-                print("INFO (EVSE): Recieved SOUND_IND")
-                if pkt[CM_MNBC_SOUND_IND].Countdown == 0:
-                    print("INFO (EVSE): Sending ATTEN_CHAR_IND in response to SOUND_IND")
-                    sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
+            if pkt.haslayer("CM_MNBC_SOUND_IND") and pkt[CM_MNBC_SOUND_IND].Countdown == 0:
+                print("INFO (EVSE): Recieved last MNBC_SOUND_IND")
+                print("INFO (EVSE): Sending ATTEN_CHAR_IND")
+                sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
             if pkt.haslayer("CM_SLAC_MATCH_REQ"):
                 print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-                print("INFO (EVSE): Sending SLAC_MATCH_CNF and starting session")
-                sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                # MAC 주소를 확인하여 자신이 대상인지 체크
+                if pkt[CM_SLAC_MATCH_REQ].EVSEMAC == self.sourceMAC:
+                    print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
+                    sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                else:
+                    print("INFO (EVSE): The packet is not intended for this EVSE.")
+                    print("INFO (EVSE): Restarting to wait for CM_SLAC_PARM_REQ.")
+                    # 초기 SLAC 단계로 돌아가기 위해 CM_SLAC_PARM_REQ를 기다림
+                    self.startSniff()  # 다시 sniff를 시작하여 CM_SLAC_PARM_REQ 패킷을 기다림
                 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
