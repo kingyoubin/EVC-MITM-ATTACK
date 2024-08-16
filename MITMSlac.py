@@ -76,6 +76,7 @@ class EVSE:
   # Start the emulator
     def start(self, restart_slac_only=False):
         if restart_slac_only:
+            print("INFO (EVSE): Restarting SLAC protocol only")
             self.doSLAC()  # SLAC 프로세스만 재시작
         else:
             self.toggleProximity()
@@ -114,8 +115,12 @@ class EVSE:
     # Starts SLAC thread that handles layer 2 comms
     def doSLAC(self):
         self.slac.start()
-        self.slac.sniffThread.join()
+        self.slac.sniffThread.join()  # SLAC 프로세스가 끝날 때까지 기다림
         print("INFO (EVSE): Done SLAC")
+        
+    def restart_slac(self):
+        self.slac = _SLACHandler(self)  # SLAC 핸들러를 다시 생성하여 초기화
+        self.start(restart_slac_only=True)  # SLAC만 재시작
 
 # Handles all SLAC communications
 class _SLACHandler:
@@ -200,11 +205,8 @@ class _SLACHandler:
 
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-
-            # CM_SLAC_MATCH_REQ 패킷의 EVSEMAC 필드를 가져옴
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
 
-            # 자신의 MAC 주소와 비교
             if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)

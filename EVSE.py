@@ -72,17 +72,18 @@ class EVSE:
         self.ALL_OFF = 0b0
 
     # Start the emulator
-    def start(self):
-        # Initialize the I2C bus for wwrite
-        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
-
-        self.toggleProximity()
-        self.doSLAC()
-        self.doTCP()
-        # If NMAP is not done, restart connection
-        if not self.tcp.finishedNMAP:
-            print("INFO (EVSE): Attempting to restart connection...")
-            self.start()
+    def start(self, restart_slac_only=False):
+        if restart_slac_only:
+            print("INFO (EVSE): Restarting SLAC protocol only")
+            self.doSLAC()  # SLAC 프로세스만 재시작
+        else:
+            self.toggleProximity()
+            self.doSLAC()  # SLAC 프로세스를 시작
+            self.doTCP()   # TCP 프로세스를 시작
+            # If NMAP is not done, restart connection
+            if not self.tcp.finishedNMAP:
+                print("INFO (EVSE): Attempting to restart connection...")
+                self.start()
 
     # Close the circuit for the proximity pins
     def closeProximity(self):
@@ -116,7 +117,6 @@ class EVSE:
         print("INFO (EVSE): Done SLAC")
         
     def restart_slac(self):
-        print("INFO (EVSE): Restarting SLAC protocol only")
         self.slac = _SLACHandler(self)  # SLAC 핸들러를 다시 생성하여 초기화
         self.start(restart_slac_only=True)  # SLAC만 재시작
 
@@ -194,13 +194,11 @@ class _SLACHandler:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
+
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-
-            # CM_SLAC_MATCH_REQ 패킷의 EVSEMAC 필드를 가져옴
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
 
-            # 자신의 MAC 주소와 비교
             if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
