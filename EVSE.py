@@ -74,7 +74,7 @@ class EVSE:
     # Start the emulator
     def start(self):
         # Initialize the I2C bus for wwrite
-        self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
+        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
 
         self.toggleProximity()
         self.doSLAC()
