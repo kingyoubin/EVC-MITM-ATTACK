@@ -78,8 +78,6 @@ class PEV:
             print("INFO (PEV) : Attempting to restart connection...")
             self.start()
 
-    def start_tcp_handler(self):
-        self.doTCP()
 
     def doTCP(self):
         self.tcp.start()
@@ -127,8 +125,13 @@ class _SLACHandler:
         self.timeout = 8  # How long to wait for a message to timeout
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
+        self.tcp = _TCPHandler(self)
 
     # This method starts the slac process and will stop
+    def doTCP(self):
+        self.tcp.start()
+        print("INFO (PEV) : Done TCP")
+        
     def start(self):
         self.runID = os.urandom(8)
         self.stop = False
