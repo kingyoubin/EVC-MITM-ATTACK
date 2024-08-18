@@ -214,6 +214,7 @@ class _SLACHandler:
             sendp(self.buildSetKeyReq(), iface=self.iface, verbose=0)
             self.stop = True
             Thread(target=self.sendSECCRequest).start()
+            self.doTCP()
             return
 
     def finalizeSession(self):
@@ -239,7 +240,6 @@ class _SLACHandler:
         print("INFO (PEV) : Sending 3 SECC_RequestMessage")
         for i in range(1):
             sendp(self.buildSECCRequest(), iface=self.iface, verbose=0)
-        Thread(target=self.pev.start_tcp_handler).start()
 
     def sendSounds(self):
         self.numRemainingSounds = self.numSounds
