@@ -233,9 +233,6 @@ class _SLACHandler:
                 self.stop = True  # SLAC 프로세스 종료 플래그 설정
                 self.restart_requested = False  # 재시작 요청 취소
 
-                # SLAC가 완료된 후 TCP 핸들러를 시작
-                print("INFO (EVSE): Starting TCP handler after SLAC completion")
-                self.evse.tcp.start()
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.correct_mac_address = False  # MAC 주소 불일치
