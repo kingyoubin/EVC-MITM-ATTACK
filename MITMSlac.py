@@ -79,6 +79,7 @@ class EVSE:
         else:
             self.toggleProximity()
             self.doSLAC()  # SLAC 프로세스를 시작
+            time.sleep(1)
             self.doTCP()   # TCP 프로세스를 시작
             # If NMAP is not done, restart connection
             if not self.tcp.finishedNMAP:
@@ -176,26 +177,15 @@ class _SLACHandler:
             self.evse.restart_slac()  # SLAC 프로세스만 재시작
 
     def stopSniff(self, pkt):
-        print("DEBUG (stopSniff): Packet captured.")
-
-        # SECC_RequestMessage를 명확하게 식별
         if pkt.haslayer("SECC_RequestMessage"):
-            print("INFO (EVSE): Received SECC_RequestMessage")
-            if not self.correct_mac_address:
-                print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
-                return False
-
+            print("INDO (EVSE): Recieved SECC_RequestMessage")
+            # self.evse.destinationMAC = pkt[Ether].src
+            # use this to send 3 secc responses incase car doesnt see one
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
-
-            # SECC 요청을 처리할 준비가 되었음을 나타냅니다.
-            self.stop = True
-            print("INFO (EVSE): Stopping sniffing and sending SECC response.")
             Thread(target=self.sendSECCResponse).start()
-            return True
-
-        print("DEBUG: Ignoring non-SECC packet.")
-        return False  # Non-SECC 패킷은 모두 무시
+            self.stop = True
+        return self.stop
     
     def sendSECCResponse(self):
         if not self.correct_mac_address:
