@@ -70,22 +70,16 @@ class PEV:
         self.ALL_OFF = 0b0
 
     def start(self):
-        # Initialize the smbus for I2C commands
-        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
-
         self.toggleProximity()
         self.doSLAC()
-        
-        # 기다림이 필요할 경우 SLAC 핸들러가 완료될 때까지 대기
-        self.slac.sniffThread.join()
-        
-        # SLAC 완료 후 TCP 핸들러 시작
-        self.doTCP()
-        
+        # TCP 핸들러는 SLAC 핸들러 내에서 실행되므로 여기서 실행하지 않음
         # If NMAP is not done, restart connection
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
             self.start()
+
+    def start_tcp_handler(self):
+        self.doTCP()
 
     def doTCP(self):
         self.tcp.start()
@@ -245,6 +239,7 @@ class _SLACHandler:
         print("INFO (PEV) : Sending 3 SECC_RequestMessage")
         for i in range(1):
             sendp(self.buildSECCRequest(), iface=self.iface, verbose=0)
+        Thread(target=self.pev.start_tcp_handler).start()
 
     def sendSounds(self):
         self.numRemainingSounds = self.numSounds
