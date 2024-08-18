@@ -107,7 +107,9 @@ class EVSE:
 
     # Starts TCP/IPv6 thread that handles layer 3 comms
     def doTCP(self):
+        print("INFO (EVSE): Starting TCP handler")  # 추가된 로그
         self.tcp.start()
+        print("INFO (EVSE): TCP handler started")  # 추가된 로그
         print("INFO (EVSE): Done TCP")
 
     # Starts SLAC thread that handles layer 2 comms
@@ -179,11 +181,14 @@ class _SLACHandler:
             if not self.correct_mac_address:
                 print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
                 return False  # MAC 주소가 다르면 응답하지 않음
-            # SECC 요청을 처리할 준비가 되었으므로 stop을 설정하지 않음
+            
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
+            
+            # SECC 요청을 처리할 준비가 되었음을 나타냅니다.
+            self.stop = True  # Sniffing을 중지하도록 설정
             Thread(target=self.sendSECCResponse).start()
-            return True  # SECC 요청을 처리한 후 sniffing을 멈춥니다.
+            return True  # SECC 요청을 처리한 후 sniffing을 멈춤
         return self.stop
     
     def sendSECCResponse(self):
@@ -195,7 +200,7 @@ class _SLACHandler:
             return  # SLAC이 멈추는 중이면 응답을 중단
         time.sleep(0.2)
         for i in range(3):
-            print("INFO (EVSE): Sending SECC_ResponseMessage")
+            print("INFO (EVSE): Sending SECC_ResponseMessage")  # 추가된 로그
             sendp(self.buildSECCResponse(), iface=self.iface, verbose=0)
         print("INFO (EVSE): Finished sending SECC_ResponseMessage")
 
