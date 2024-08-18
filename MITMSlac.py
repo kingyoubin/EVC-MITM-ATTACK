@@ -222,7 +222,7 @@ class _SLACHandler:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
-        if pkt.haslayer("CM_SLAC_MATCH_REQ") and not self.stop:
+        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
 
