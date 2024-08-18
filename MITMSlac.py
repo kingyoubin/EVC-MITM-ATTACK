@@ -79,7 +79,6 @@ class EVSE:
         else:
             self.toggleProximity()
             self.doSLAC()  # SLAC 프로세스를 시작
-            time.sleep(1)
             self.doTCP()   # TCP 프로세스를 시작
             # If NMAP is not done, restart connection
             if not self.tcp.finishedNMAP:
@@ -430,7 +429,7 @@ class _TCPHandler:
     # Need this so the sniff thread is actually running when the handshake is sent
     def setStartSniff(self):
         self.startSniff = True
-        # print("INFO (EVSE): Starting recv sniff")
+        print("INFO (EVSE): Starting recv sniff")
 
     def recv(self):
         print("EVSE (INFO): Starting recv thread")
