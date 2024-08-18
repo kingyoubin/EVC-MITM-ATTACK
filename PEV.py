@@ -1,13 +1,3 @@
-"""
-    Copyright 2023, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
-
-    This class is used to emulate a PEV when talking to an EVSE. Handles level 2 SLAC communications
-    and level 3 UDP and TCP communications to the charging station.
-"""
-
-# need to do this to import the custom SECC and V2G scapy layer
-import sys, os
-
 sys.path.append("./external_libs/HomePlugPWN")
 sys.path.append("./external_libs/V2GInjector/core")
 
@@ -75,6 +65,7 @@ class PEV:
 
         self.toggleProximity()
         self.doSLAC()
+        self.doTCP()
         # If NMAP is not done, restart connection
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
@@ -212,36 +203,8 @@ class _SLACHandler:
             print("INFO (PEV) : Sending SET_KEY_REQ")
             sendp(self.buildSetKeyReq(), iface=self.iface, verbose=0)
             self.stop = True
-            
-            # SECC 요청을 보내고 나서 doTCP를 실행하도록 변경
-            Thread(target=self.sendSECCRequestAndStartTCP).start()
+            Thread(target=self.sendSECCRequest).start()
             return
-
-    def sendSECCRequestAndStartTCP(self):
-        # SECC 요청 메시지를 보냅니다.
-        self.sendSECCRequest()
-        
-        # SECC 응답을 대기하고 처리합니다.
-        self.handleSECCResponse()
-
-        # SECC 응답을 받은 후 TCP 연결을 시작합니다.
-        self.pev.doTCP()
-
-    def handleSECCResponse(self):
-        # 여기서 SECC 응답을 기다리고, 대상 IP, MAC, 포트 정보를 추출합니다.
-        # 이 코드는 SECC 응답을 실제로 어떻게 받는지에 따라 구현이 필요합니다.
-        # 예를 들어, sniff()를 사용하여 응답을 기다리고, 응답 패킷을 파싱합니다.
-        
-        # 예시:
-        response_pkt = sniff(iface=self.iface, count=1, filter="ip6 and udp port 15118")
-        
-        # SECC 응답에서 대상 주소와 포트를 추출하여 pev 객체에 설정합니다.
-        self.pev.destinationIP = response_pkt[0][IPv6].src
-        self.pev.destinationPort = response_pkt[0][UDP].sport
-        self.pev.destinationMAC = response_pkt[0][Ether].src
-        
-        print(f"INFO (PEV) : Received SECC Response with destination IP: {self.pev.destinationIP}, Port: {self.pev.destinationPort}")
-
 
     def finalizeSession(self):
         if not self.attenuation_records:
@@ -264,7 +227,7 @@ class _SLACHandler:
     def sendSECCRequest(self):
         time.sleep(3)
         print("INFO (PEV) : Sending 3 SECC_RequestMessage")
-        for i in range(3):
+        for i in range(1):
             sendp(self.buildSECCRequest(), iface=self.iface, verbose=0)
 
     def sendSounds(self):
@@ -480,22 +443,17 @@ class _TCPHandler:
         
         self.scanner = None
 
-        self.timeout = 20
+        self.timeout = 15
 
         self.soc = 10
 
     def start(self):
         self.msgList = {}
         self.running = True
+        self.prechargeCount = 0
         print("INFO (PEV) : Starting TCP")
 
-        # SECC 응답으로 설정된 MAC, IP, 포트를 사용
-        if not self.pev.destinationIP or not self.pev.destinationPort:
-            raise ValueError("Destination IP and Port must be set before starting TCP.")
-
-        self.destinationMAC = self.pev.destinationMAC
-        self.destinationIP = self.pev.destinationIP
-        self.destinationPort = self.pev.destinationPort
+        # self.sendNeighborSolicitation()
 
         self.recvThread = AsyncSniffer(
             iface=self.iface,
@@ -510,6 +468,11 @@ class _TCPHandler:
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
+
+        self.neighborSolicitationThread = AsyncSniffer(
+            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborAdvertisement
+        )
+        self.neighborSolicitationThread.start()
 
         while self.running:
             time.sleep(1)
