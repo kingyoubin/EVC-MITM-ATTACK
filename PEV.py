@@ -480,7 +480,7 @@ class _TCPHandler:
         
         self.scanner = None
 
-        self.timeout = 15
+        self.timeout = 20
 
         self.soc = 10
 
