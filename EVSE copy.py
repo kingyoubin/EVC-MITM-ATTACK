@@ -31,8 +31,8 @@ class EVSE:
     def __init__(self, args):
         self.mode = RunMode(args.mode[0]) if args.mode else RunMode.FULL
         self.iface = args.interface[0] if args.interface else "eth1"
-        self.sourceMAC = args.source_mac[0] if args.source_mac else "00:1e:c0:f2:6c:a2"
-        self.sourceIP = args.source_ip[0] if args.source_ip else "fe80::21e:c0ff:fef2:6ca2"
+        self.sourceMAC = args.source_mac[0] if args.source_mac else "00:1e:c0:f2:6c:a0"
+        self.sourceIP = args.source_ip[0] if args.source_ip else "fe80::21e:c0ff:fef2:6ca0"
         self.sourcePort = args.source_port[0] if args.source_port else 25565
         self.NID = args.NID[0] if args.NID else b"\x9c\xb0\xb2\xbb\xf5\x6c\x0e"
         self.NMK = args.NMK[0] if args.NMK else b"\x48\xfe\x56\x02\xdb\xac\xcd\xe5\x1e\xda\xdc\x3e\x08\x1a\x52\xd1"
@@ -79,7 +79,6 @@ class EVSE:
         else:
             self.toggleProximity()
             self.doSLAC()  # SLAC 프로세스를 시작
-            time.sleep(1)
             self.doTCP()   # TCP 프로세스를 시작
             # If NMAP is not done, restart connection
             if not self.tcp.finishedNMAP:
@@ -108,9 +107,7 @@ class EVSE:
 
     # Starts TCP/IPv6 thread that handles layer 3 comms
     def doTCP(self):
-        print("INFO (EVSE): Starting TCP handler")  # 추가된 로그
         self.tcp.start()
-        print("INFO (EVSE): TCP handler started")  # 추가된 로그
         print("INFO (EVSE): Done TCP")
 
     # Starts SLAC thread that handles layer 2 comms
@@ -155,21 +152,20 @@ class _SLACHandler:
         
     def restart_slac(self):
         print("INFO (EVSE): Restarting SLAC protocol")
-        self.stop = True
-        self.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
-        self.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
-        self.__init__(self.evse)  # SLAC 핸들러를 새로 초기화합니다.
-        self.start()  # SLAC 프로토콜을 다시 시작합니다.
+        self.slac.stop = True
+        self.slac.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
+        self.slac.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
+        self.slac = _SLACHandler(self)  # SLAC 핸들러를 새로 초기화합니다.
+        self.slac.start()  # SLAC 프로토콜을 다시 시작합니다.
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
-        while True:
-            if self.stop:
-                break
+        while not self.stop:
             if time.time() - self.lastMessageTime > self.timeout:
                 print("INFO (EVSE): SLAC timed out, resetting connection...")
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
+        print("INFO (EVSE): Timeout thread stopped.")
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
@@ -179,13 +175,18 @@ class _SLACHandler:
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
-            print("INDO (EVSE): Recieved SECC_RequestMessage")
-            # self.evse.destinationMAC = pkt[Ether].src
-            # use this to send 3 secc responses incase car doesnt see one
+            print("INFO (EVSE): Received SECC_RequestMessage")
+            if not self.correct_mac_address:
+                print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
+                return False  # MAC 주소가 다르면 응답하지 않음
+            
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
+            
+            # SECC 요청을 처리할 준비가 되었음을 나타냅니다.
+            self.stop = True  # Sniffing을 중지하도록 설정
             Thread(target=self.sendSECCResponse).start()
-            self.stop = True
+            return True  # SECC 요청을 처리한 후 sniffing을 멈춤
         return self.stop
     
     def sendSECCResponse(self):
@@ -231,12 +232,15 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 self.correct_mac_address = True  # MAC 주소 일치 확인
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
+                # SLAC 프로세스가 성공적으로 종료되었음을 나타냅니다.
+                self.stop = True  # SLAC 프로세스 종료
                 self.restart_requested = False  # 재시작 요청 취소
-
+                # SLAC 완료 후 TCP 시작
+                self.evse.tcp.start()
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.correct_mac_address = False  # MAC 주소 불일치
-                self.stop = True  # SLAC 종료 플래그 설정
+                self.stop = True  # 모든 스레드를 중지하도록 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
 
     def buildSlacParmCnf(self):
@@ -417,7 +421,6 @@ class _SLACHandler:
 
         responsePacket = e / ip / udp / secc / seccRM
         return responsePacket
-
 
 
 class _TCPHandler:
