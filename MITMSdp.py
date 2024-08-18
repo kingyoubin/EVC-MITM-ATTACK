@@ -163,7 +163,7 @@ class _TCPHandler:
         self.scanner = None
         self.finishedNMAP = False
 
-        self.timeout = 5
+        self.timeout = 1000
 
     def start(self):
         self.msgList = {}
