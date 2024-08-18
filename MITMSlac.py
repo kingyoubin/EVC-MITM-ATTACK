@@ -154,11 +154,11 @@ class _SLACHandler:
         
     def restart_slac(self):
         print("INFO (EVSE): Restarting SLAC protocol")
-        self.slac.stop = True
-        self.slac.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
-        self.slac.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
-        self.slac = _SLACHandler(self)  # SLAC 핸들러를 새로 초기화합니다.
-        self.slac.start()  # SLAC 프로토콜을 다시 시작합니다.
+        self.stop = True
+        self.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
+        self.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
+        self.__init__(self.evse)  # SLAC 핸들러를 새로 초기화합니다.
+        self.start()  # SLAC 프로토콜을 다시 시작합니다.
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
