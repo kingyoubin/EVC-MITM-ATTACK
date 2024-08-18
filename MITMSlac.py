@@ -193,6 +193,8 @@ class _SLACHandler:
             return True  # SECC 요청을 처리한 후 sniffing을 멈춤
         else:
             print("DEBUG (stopSniff): SECC_RequestMessage not found in packet.")
+            print(f"DEBUG (stopSniff): Packet details - {pkt.summary()}")  # 패킷의 요약 정보를 출력
+            print(f"DEBUG (stopSniff): Packet layers - {[layer for layer in pkt.layers()]}")
         return self.stop
     
     def sendSECCResponse(self):
