@@ -212,9 +212,17 @@ class _SLACHandler:
             print("INFO (PEV) : Sending SET_KEY_REQ")
             sendp(self.buildSetKeyReq(), iface=self.iface, verbose=0)
             self.stop = True
-            Thread(target=self.sendSECCRequest).start()
-            self.pev.doTCP()
+            
+            # SECC 요청을 보내고 나서 doTCP를 실행하도록 변경
+            Thread(target=self.sendSECCRequestAndStartTCP).start()
             return
+
+    def sendSECCRequestAndStartTCP(self):
+        # SECC 요청 메시지를 보냅니다.
+        self.sendSECCRequest()
+        
+        # SECC 응답을 받은 후 TCP 연결을 시작합니다.
+        self.pev.doTCP()
 
     def finalizeSession(self):
         if not self.attenuation_records:
@@ -460,10 +468,12 @@ class _TCPHandler:
     def start(self):
         self.msgList = {}
         self.running = True
-        self.prechargeCount = 0
         print("INFO (PEV) : Starting TCP")
 
-        # self.sendNeighborSolicitation()
+        # 기존 코드에서 SECC 응답을 받은 후에 설정된 IP와 포트를 사용
+        self.destinationMAC = self.pev.destinationMAC
+        self.destinationIP = self.pev.destinationIP
+        self.destinationPort = self.pev.destinationPort
 
         self.recvThread = AsyncSniffer(
             iface=self.iface,
@@ -478,11 +488,6 @@ class _TCPHandler:
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
-
-        self.neighborSolicitationThread = AsyncSniffer(
-            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborAdvertisement
-        )
-        self.neighborSolicitationThread.start()
 
         while self.running:
             time.sleep(1)
