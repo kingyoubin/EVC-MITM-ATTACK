@@ -177,12 +177,15 @@ class _SLACHandler:
 
     def stopSniff(self, pkt):
         print("DEBUG (stopSniff): Packet captured.")  # 패킷이 캡처되는지 확인하는 디버그 로그
+        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
+            print("DEBUG (stopSniff): Ignoring CM_SLAC_MATCH_REQ in stopSniff")
+            return False  # SLAC_MATCH_REQ 패킷은 무시하고 sniffing을 계속 진행
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
             if not self.correct_mac_address:
                 print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
                 return False  # MAC 주소가 다르면 응답하지 않음
-            
+
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
             
@@ -232,7 +235,7 @@ class _SLACHandler:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
-        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
+        if pkt.haslayer("CM_SLAC_MATCH_REQ") and not self.stop:  # stop이 설정되지 않은 경우에만 처리
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
 
@@ -240,15 +243,14 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 self.correct_mac_address = True  # MAC 주소 일치 확인
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
-                # SLAC 프로세스가 성공적으로 종료되었음을 나타냅니다.
-                self.stop = True  # SLAC 프로세스 종료
+                self.stop = True  # SLAC 프로세스 종료 플래그 설정
                 self.restart_requested = False  # 재시작 요청 취소
                 # SLAC 완료 후 TCP 시작
                 self.evse.tcp.start()
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.correct_mac_address = False  # MAC 주소 불일치
-                self.stop = True  # 모든 스레드를 중지하도록 설정
+                self.stop = True  # SLAC 종료 플래그 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
 
     def buildSlacParmCnf(self):
