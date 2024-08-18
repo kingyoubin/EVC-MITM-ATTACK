@@ -231,7 +231,6 @@ class _SLACHandler:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 self.correct_mac_address = True  # MAC 주소 일치 확인
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
-                self.stop = True  # SLAC 프로세스 종료 플래그 설정
                 self.restart_requested = False  # 재시작 요청 취소
 
             else:
