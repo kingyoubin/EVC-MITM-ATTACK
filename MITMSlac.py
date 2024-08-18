@@ -381,7 +381,7 @@ class _TCPHandler:
         self.stop = False
         self.scanner = None
 
-        self.timeout = 8
+        self.timeout = 15
 
     def start(self):
         self.msgList = {}
