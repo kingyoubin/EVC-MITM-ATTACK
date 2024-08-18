@@ -176,27 +176,27 @@ class _SLACHandler:
             self.evse.restart_slac()  # SLAC 프로세스만 재시작
 
     def stopSniff(self, pkt):
-        print("DEBUG (stopSniff): Packet captured.")  # 패킷이 캡처되는지 확인하는 디버그 로그
-        if pkt.haslayer("CM_SLAC_MATCH_REQ"):
-            print("DEBUG (stopSniff): Ignoring CM_SLAC_MATCH_REQ in stopSniff")
-            return False  # SLAC_MATCH_REQ 패킷은 무시하고 sniffing을 계속 진행
+        print("DEBUG (stopSniff): Packet captured.")
+        if pkt.haslayer("CM_SLAC_MATCH_REQ") or pkt.haslayer("CM_SLAC_MATCH_CNF"):
+            print("DEBUG (stopSniff): Ignoring CM_SLAC_MATCH_REQ or CM_SLAC_MATCH_CNF in stopSniff")
+            return False  # SLAC_MATCH_REQ 및 SLAC_MATCH_CNF 패킷은 무시
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
             if not self.correct_mac_address:
                 print("INFO (EVSE): SECC_RequestMessage received but MAC address does not match. Ignoring.")
-                return False  # MAC 주소가 다르면 응답하지 않음
+                return False
 
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
-            
+
             # SECC 요청을 처리할 준비가 되었음을 나타냅니다.
-            self.stop = True  # Sniffing을 중지하도록 설정
+            self.stop = True
             print("INFO (EVSE): Stopping sniffing and sending SECC response.")
             Thread(target=self.sendSECCResponse).start()
-            return True  # SECC 요청을 처리한 후 sniffing을 멈춤
+            return True
         else:
             print("DEBUG (stopSniff): SECC_RequestMessage not found in packet.")
-            print(f"DEBUG (stopSniff): Packet details - {pkt.summary()}")  # 패킷의 요약 정보를 출력
+            print(f"DEBUG (stopSniff): Packet details - {pkt.summary()}")
             print(f"DEBUG (stopSniff): Packet layers - {[layer for layer in pkt.layers()]}")
         return self.stop
     
@@ -235,7 +235,7 @@ class _SLACHandler:
             print("INFO (EVSE): Sending ATTEN_CHAR_IND")
             sendp(self.buildAttenCharInd(), iface=self.iface, verbose=0)
 
-        if pkt.haslayer("CM_SLAC_MATCH_REQ") and not self.stop:  # stop이 설정되지 않은 경우에만 처리
+        if pkt.haslayer("CM_SLAC_MATCH_REQ") and not self.stop:
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
             evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
 
@@ -245,7 +245,9 @@ class _SLACHandler:
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
                 self.stop = True  # SLAC 프로세스 종료 플래그 설정
                 self.restart_requested = False  # 재시작 요청 취소
-                # SLAC 완료 후 TCP 시작
+
+                # SLAC가 완료된 후 TCP 핸들러를 시작
+                print("INFO (EVSE): Starting TCP handler after SLAC completion")
                 self.evse.tcp.start()
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
