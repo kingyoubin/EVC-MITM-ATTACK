@@ -75,7 +75,13 @@ class PEV:
 
         self.toggleProximity()
         self.doSLAC()
+        
+        # 기다림이 필요할 경우 SLAC 핸들러가 완료될 때까지 대기
+        self.slac.sniffThread.join()
+        
+        # SLAC 완료 후 TCP 핸들러 시작
         self.doTCP()
+        
         # If NMAP is not done, restart connection
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
