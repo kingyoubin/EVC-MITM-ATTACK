@@ -55,6 +55,7 @@ class EVSE:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
+        self.start_tcp = True  # TCP 핸들러 실행 여부를 제어하는 플래그 추가
 
         self.exi = EXIProcessor(self.protocol)
 
@@ -71,20 +72,23 @@ class EVSE:
         self.EVSE_PP = 0b1000
         self.ALL_OFF = 0b0
 
-    # Start the emulator
-    def start(self, restart_slac_only=False):
-        if restart_slac_only:
-            print("INFO (EVSE): Restarting SLAC protocol only")
-            self.doSLAC()  # SLAC 프로세스만 재시작
-        else:
-            self.toggleProximity()
-            self.doSLAC()  # SLAC 프로세스를 시작
-            self.doTCP()   # TCP 프로세스를 시작
-            # If NMAP is not done, restart connection
-            if not self.tcp.finishedNMAP:
-                print("INFO (EVSE): Attempting to restart connection...")
-                self.start()
 
+    def start(self, restart_slac_only=False):
+            if restart_slac_only:
+                print("INFO (EVSE): Restarting SLAC protocol only")
+                self.doSLAC()  # SLAC 프로세스만 재시작
+            else:
+                self.toggleProximity()
+                self.doSLAC()  # SLAC 프로세스를 시작
+                if self.start_tcp:  # start_tcp 플래그가 True일 때만 TCP 핸들러 실행
+                    self.doTCP()   # TCP 프로세스를 시작
+                else:
+                    print("INFO (EVSE): TCP handler not started due to MAC address mismatch")
+                # If NMAP is not done, restart connection
+                if not self.tcp.finishedNMAP and self.start_tcp:
+                    print("INFO (EVSE): Attempting to restart connection...")
+                    self.start()
+                
     # Close the circuit for the proximity pins
     def closeProximity(self):
         if self.modified_cordset:
@@ -229,12 +233,14 @@ class _SLACHandler:
             if evsemac == self.sourceMAC:
                 print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
                 self.correct_mac_address = True  # MAC 주소 일치 확인
+                self.evse.start_tcp = True  # MAC 주소 일치 시 TCP 핸들러 실행 가능
                 sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
                 self.restart_requested = False  # 재시작 요청 취소
 
             else:
                 print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
                 self.correct_mac_address = False  # MAC 주소 불일치
+                self.evse.start_tcp = False  # MAC 주소 불일치 시 TCP 핸들러 실행 안함
                 self.stop = True  # SLAC 종료 플래그 설정
                 self.restart_requested = True  # SLAC 재시작 요청 설정
 
