@@ -176,6 +176,7 @@ class _SLACHandler:
             self.evse.restart_slac()  # SLAC 프로세스만 재시작
 
     def stopSniff(self, pkt):
+        print("DEBUG (stopSniff): Packet captured.")  # 패킷이 캡처되는지 확인하는 디버그 로그
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
             if not self.correct_mac_address:
@@ -187,8 +188,11 @@ class _SLACHandler:
             
             # SECC 요청을 처리할 준비가 되었음을 나타냅니다.
             self.stop = True  # Sniffing을 중지하도록 설정
+            print("INFO (EVSE): Stopping sniffing and sending SECC response.")
             Thread(target=self.sendSECCResponse).start()
             return True  # SECC 요청을 처리한 후 sniffing을 멈춤
+        else:
+            print("DEBUG (stopSniff): SECC_RequestMessage not found in packet.")
         return self.stop
     
     def sendSECCResponse(self):
