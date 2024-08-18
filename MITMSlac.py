@@ -163,12 +163,13 @@ class _SLACHandler:
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
-        while not self.stop:
+        while True:
+            if self.stop:
+                break
             if time.time() - self.lastMessageTime > self.timeout:
                 print("INFO (EVSE): SLAC timed out, resetting connection...")
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
-        print("INFO (EVSE): Timeout thread stopped.")
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
