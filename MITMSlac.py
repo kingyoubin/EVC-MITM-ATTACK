@@ -177,9 +177,8 @@ class _SLACHandler:
 
     def stopSniff(self, pkt):
         print("DEBUG (stopSniff): Packet captured.")
-        if pkt.haslayer("CM_SLAC_MATCH_REQ") or pkt.haslayer("CM_SLAC_MATCH_CNF"):
-            print("DEBUG (stopSniff): Ignoring CM_SLAC_MATCH_REQ or CM_SLAC_MATCH_CNF in stopSniff")
-            return False  # SLAC_MATCH_REQ 및 SLAC_MATCH_CNF 패킷은 무시
+
+        # SECC_RequestMessage를 명확하게 식별
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
             if not self.correct_mac_address:
@@ -194,11 +193,9 @@ class _SLACHandler:
             print("INFO (EVSE): Stopping sniffing and sending SECC response.")
             Thread(target=self.sendSECCResponse).start()
             return True
-        else:
-            print("DEBUG (stopSniff): SECC_RequestMessage not found in packet.")
-            print(f"DEBUG (stopSniff): Packet details - {pkt.summary()}")
-            print(f"DEBUG (stopSniff): Packet layers - {[layer for layer in pkt.layers()]}")
-        return self.stop
+
+        print("DEBUG: Ignoring non-SECC packet.")
+        return False  # Non-SECC 패킷은 모두 무시
     
     def sendSECCResponse(self):
         if not self.correct_mac_address:
