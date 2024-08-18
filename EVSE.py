@@ -447,6 +447,7 @@ class _TCPHandler:
 
         self.stop = False
         self.scanner = None
+        self.finishedNMAP = False
 
         self.timeout = 5
 
