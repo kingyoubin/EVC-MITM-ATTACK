@@ -70,14 +70,15 @@ class PEV:
         self.ALL_OFF = 0b0
 
     def start(self):
+        # Initialize the smbus for I2C commands
+        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
+
         self.toggleProximity()
         self.doSLAC()
-        # TCP 핸들러는 SLAC 핸들러 내에서 실행되므로 여기서 실행하지 않음
         # If NMAP is not done, restart connection
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
             self.start()
-
 
     def doTCP(self):
         self.tcp.start()
@@ -125,13 +126,8 @@ class _SLACHandler:
         self.timeout = 8  # How long to wait for a message to timeout
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
-        self.tcp = _TCPHandler(self)
 
     # This method starts the slac process and will stop
-    def doTCP(self):
-        self.tcp.start()
-        print("INFO (PEV) : Done TCP")
-        
     def start(self):
         self.runID = os.urandom(8)
         self.stop = False
@@ -217,7 +213,7 @@ class _SLACHandler:
             sendp(self.buildSetKeyReq(), iface=self.iface, verbose=0)
             self.stop = True
             Thread(target=self.sendSECCRequest).start()
-            self.doTCP()
+            self.pev.doTCP()
             return
 
     def finalizeSession(self):
