@@ -76,19 +76,19 @@ class EVSE:
     def start(self, restart_slac_only=False):
         if restart_slac_only:
             print("INFO (EVSE): Restarting SLAC protocol only")
-            self.doSLAC()  # SLAC 프로세스만 재시작
+            self.doSLAC()
         else:
             self.toggleProximity()
-            self.doSLAC()  # SLAC 프로세스를 시작
-            if self.start_tcp:  # start_tcp 플래그가 True일 때만 TCP 핸들러 실행
+            self.doSLAC()
+            if self.start_tcp:
                 print("DEBUG (EVSE): Starting TCP process...")
-                self.doTCP()   # TCP 프로세스를 시작
+                self.doTCP()
             else:
                 print("INFO (EVSE): TCP handler not started due to MAC address mismatch")
-        
-        if not self.tcp.finishedNMAP and self.start_tcp:
-            print("INFO (EVSE): Attempting to restart connection...")
-            self.start()
+
+            if not self.tcp.finishedNMAP and self.start_tcp:
+                print("INFO (EVSE): Attempting to restart connection...")
+                self.start()
 
     def handle_user_code_and_send(self):
         # 이 부분이 제대로 실행되지 않는다면, 해당 메서드가 호출되지 않았을 가능성이 큽니다.
@@ -479,6 +479,7 @@ class _TCPHandler:
         self.running = True
         self.prechargeCount = 0
         print("INFO (EVSE): Starting TCP")
+        self.send_code(self.evse.user_input_code)
 
         # TCP 핸들러가 시작되면 바로 사용자 입력을 받아서 PEV로 전송하는 부분
         user_input_code = self.evse.get_user_input_code()
@@ -758,6 +759,7 @@ class _TCPHandler:
 if __name__ == "__main__":
     # Parse arguements from command line
     parser = argparse.ArgumentParser(description="EVSE emulator for AcCCS")
+    parser.add_argument("--code", type=int, required=True, help="6-digit code for authentication")
     parser.add_argument(
         "-M",
         "--mode",
