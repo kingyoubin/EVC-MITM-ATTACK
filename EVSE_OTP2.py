@@ -24,7 +24,6 @@ import xml.etree.ElementTree as ET
 import binascii
 # from smbus import SMBus
 import argparse
-from scapy.all import sendp, Ether, IPv6, UDP, Raw
 
 
 class EVSE:
@@ -41,6 +40,7 @@ class EVSE:
         self.nmapMAC = args.nmap_mac[0] if args.nmap_mac else ""
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
+        self.password = input("Enter 4-digit password: ")  # 4자리 비밀번호 입력
         if args.nmap_ports:
             for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
@@ -56,7 +56,6 @@ class EVSE:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
-        self.start_tcp = True  # TCP 핸들러 실행 여부를 제어하는 플래그 추가
         self.user_input_code = args.code
 
         self.exi = EXIProcessor(self.protocol)
@@ -74,17 +73,24 @@ class EVSE:
         self.EVSE_PP = 0b1000
         self.ALL_OFF = 0b0
 
-
+    # Start the emulator
     def start(self):
         self.toggleProximity()
         self.doSLAC()
+        # 코드 전송이 제대로 이루어지는지 확인하기 위해 디버깅 메시지 추가
+        if self.destinationIP and self.destinationMAC and self.destinationPort:
+            print("DEBUG (EVSE): Ready to send code to PEV")
+            self.send_code_to_pev()
+        else:
+            print("ERROR (EVSE): Destination details are missing, cannot send code.")
+
         self.doTCP()
-                
+        
     # Close the circuit for the proximity pins
     def closeProximity(self):
         if self.modified_cordset:
             print("INFO (EVSE): Closing CP/PP relay connections")
-           # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_PP | self.EVSE_CP)
+            # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_PP | self.EVSE_CP)
         else:
             print("INFO (EVSE): Closing CP relay connection")
             # self.bus.write_byte_data(self.I2C_ADDR, self.CONTROL_REG, self.EVSE_CP)
@@ -102,19 +108,14 @@ class EVSE:
 
     # Starts TCP/IPv6 thread that handles layer 3 comms
     def doTCP(self):
-        print("INFO (EVSE): Starting TCP handler")
-        self.tcp_handler = _TCPHandler(self)
-        self.tcp_handler.start()
+        self.tcp.start()
+        print("INFO (EVSE): Done TCP")
 
     # Starts SLAC thread that handles layer 2 comms
     def doSLAC(self):
         self.slac.start()
         self.slac.sniffThread.join()
         print("INFO (EVSE): Done SLAC")
-        
-    def restart_slac(self):
-        self.slac = _SLACHandler(self)  # SLAC 핸들러를 다시 생성하여 초기화
-        self.start(restart_slac_only=True)  # SLAC만 재시작
 
 
 # Handles all SLAC communications
@@ -128,33 +129,19 @@ class _SLACHandler:
         self.NID = self.evse.NID
         self.NMK = self.evse.NMK
 
-        self.timeout = 18
+        self.timeout = 8
         self.stop = False
-        self.restart_requested = False  # SLAC 재시작 요청 플래그
-        self.correct_mac_address = False  # MAC 주소 일치 여부 플래그
 
     # Starts SLAC process
     def start(self):
         self.stop = False
-        self.restart_requested = False
         print("INFO (EVSE): Sending SET_KEY_REQ")
         sendp(self.buildSetKey(), iface=self.iface, verbose=0)
-
         self.sniffThread = Thread(target=self.startSniff)
         self.sniffThread.start()
-        
-        self.send_code_to_pev()
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
-        
-    def restart_slac(self):
-        print("INFO (EVSE): Restarting SLAC protocol")
-        self.stop = True
-        self.sniffThread.join()  # 이전 스니핑 스레드가 종료되기를 기다립니다.
-        self.timeoutThread.join()  # 이전 타임아웃 스레드가 종료되기를 기다립니다.
-        self.__init__(self.evse)  # SLAC 핸들러를 새로 초기화합니다.
-        self.start()  # SLAC 프로토콜을 다시 시작합니다.
 
     def checkForTimeout(self):
         self.lastMessageTime = time.time()
@@ -165,58 +152,28 @@ class _SLACHandler:
                 print("INFO (EVSE): SLAC timed out, resetting connection...")
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
-                
-    def send_code_to_pev(self):
-        if self.destinationIP and self.destinationMAC and self.destinationPort:
-            eth = Ether(src=self.sourceMAC, dst=self.destinationMAC)
-            ip = IPv6(src=self.sourceIP, dst=self.destinationIP)
-            udp = UDP(sport=self.sourcePort, dport=self.destinationPort)
-            raw = Raw(load=str(self.user_input_code).encode('utf-8'))
-            pkt = eth / ip / udp / raw
-
-            print(f"DEBUG (EVSE): Prepared packet with code {self.user_input_code} to send to PEV")
-            print(f"DEBUG (EVSE): Packet details: {pkt.summary()}")
-
-            sendp(pkt, iface=self.iface, verbose=1)  # 패킷 전송 확인을 위해 verbose=1 설정
-            print("DEBUG (EVSE): Packet sent to PEV.")
-        else:
-            print("ERROR (EVSE): Missing destination information.")
-                
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
-        print("INFO (EVSE): Sniffing stopped.")
-        if self.restart_requested:
-            self.evse.restart_slac()  # SLAC 프로세스만 재시작
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
-            print("INFO (EVSE): Received SECC_RequestMessage")
+            print("INDO (EVSE): Recieved SECC_RequestMessage")
+            # self.evse.destinationMAC = pkt[Ether].src
+            # use this to send 3 secc responses incase car doesnt see one
             self.destinationIP = pkt[IPv6].src
-            self.destinationMAC = pkt[Ether].src
             self.destinationPort = pkt[UDP].sport
-            print(f"INFO (EVSE): Identified PEV IP: {self.destinationIP}, Port: {self.destinationPort}")
             Thread(target=self.sendSECCResponse).start()
             self.stop = True
-    
+        return self.stop
+
     def sendSECCResponse(self):
-        if not self.correct_mac_address:
-            print("INFO (EVSE): Incorrect MAC address, SECC response aborted.")
-            return  # MAC 주소가 불일치하면 응답을 중단
-        if self.stop:
-            print("INFO (EVSE): SLAC is stopping, SECC response aborted.")
-            return  # SLAC이 멈추는 중이면 응답을 중단
         time.sleep(0.2)
         for i in range(3):
-            print("INFO (EVSE): Sending SECC_ResponseMessage")  # 추가된 로그
+            print("INFO (EVSE): Sending SECC_ResponseMessage")
             sendp(self.buildSECCResponse(), iface=self.iface, verbose=0)
-        print("INFO (EVSE): Finished sending SECC_ResponseMessage")
 
     def handlePacket(self, pkt):
-        #if self.stop:
-        #    print("INFO (EVSE): SLAC is stopping, ignoring packet.")
-        #    return  # SLAC이 멈추는 중이면 패킷을 무시
-
         if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
             return
 
@@ -224,7 +181,7 @@ class _SLACHandler:
 
         if pkt.haslayer("CM_SLAC_PARM_REQ"):
             print("INFO (EVSE): Recieved SLAC_PARM_REQ")
-            self.destinationMAC = pkt[Ether].src  # destinationMAC 설정
+            self.destinationMAC = pkt[Ether].src
             self.runID = pkt[CM_SLAC_PARM_REQ].RunID
             print("INFO (EVSE): Sending CM_SLAC_PARM_CNF")
             sendp(self.buildSlacParmCnf(), iface=self.iface, verbose=0)
@@ -236,21 +193,8 @@ class _SLACHandler:
 
         if pkt.haslayer("CM_SLAC_MATCH_REQ"):
             print("INFO (EVSE): Recieved SLAC_MATCH_REQ")
-            evsemac = pkt[CM_SLAC_MATCH_REQ].VariableField.EVSEMAC
-
-            if evsemac == self.sourceMAC:
-                print("INFO (EVSE): The packet is intended for this EVSE. Sending SLAC_MATCH_CNF")
-                self.correct_mac_address = True  # MAC 주소 일치 확인
-                self.evse.start_tcp = True  # MAC 주소 일치 시 TCP 핸들러 실행 가능
-                sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
-                self.restart_requested = False  # 재시작 요청 취소
-
-            else:
-                print(f"INFO (EVSE): The packet is not intended for this EVSE (EVSEMAC: {evsemac}).")
-                self.correct_mac_address = False  # MAC 주소 불일치
-                self.evse.start_tcp = False  # MAC 주소 불일치 시 TCP 핸들러 실행 안함
-                self.stop = True  # SLAC 종료 플래그 설정
-                self.restart_requested = True  # SLAC 재시작 요청 설정
+            print("INFO (EVSE): Sending SLAC_MATCH_CNF")
+            sendp(self.buildSlacMatchCnf(), iface=self.iface, verbose=0)
 
     def buildSlacParmCnf(self):
         ethLayer = Ether()
@@ -432,7 +376,6 @@ class _SLACHandler:
         return responsePacket
 
 
-
 class _TCPHandler:
     def __init__(self, evse: EVSE):
         self.evse = evse
@@ -448,33 +391,21 @@ class _TCPHandler:
 
         self.seq = 10000
         self.ack = 0
-        self.sessionID = "00"
 
         self.exi = self.evse.exi
         self.xml = XMLBuilder(self.exi)
         self.msgList = {}
 
         self.stop = False
-        self.startSniff = False
-        self.finishedNMAP = False
-        self.lastPort = 0
-        
         self.scanner = None
 
-        self.timeout = 15
-
-        self.soc = 10
+        self.timeout = 5
 
     def start(self):
         self.msgList = {}
         self.running = True
-        self.prechargeCount = 0
         print("INFO (EVSE): Starting TCP")
-        self.send_code(self.evse.user_input_code)
-
-        # TCP 핸들러가 시작되면 바로 사용자 입력을 받아서 PEV로 전송하는 부분
-        user_input_code = self.evse.get_user_input_code()
-        self.send_code(user_input_code)
+        self.startSniff = False
 
         self.recvThread = AsyncSniffer(
             iface=self.iface,
@@ -484,31 +415,24 @@ class _TCPHandler:
         )
         self.recvThread.start()
 
-        self.handshakeThread = Thread(target=self.handshake)
+        while not self.startSniff:
+            continue
+
+        self.handshakeThread = AsyncSniffer(
+            count=1, iface=self.iface, lfilter=lambda x: x.haslayer("IPv6") and x.haslayer("TCP") and x[TCP].flags == "S", prn=self.handshake
+        )
         self.handshakeThread.start()
 
-        self.timeoutThread = Thread(target=self.checkForTimeout)
-        self.timeoutThread.start()
-
         self.neighborSolicitationThread = AsyncSniffer(
-            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborAdvertisement
+            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborSoliciation
         )
         self.neighborSolicitationThread.start()
 
+        ## self.timeoutThread = Thread(target=self.checkForTimeout)
+        ## self.timeoutThread.start()
+
         while self.running:
             time.sleep(1)
-
-    def send_code(self, code):
-        # PEV로 코드 전송
-        code_message = str(code).encode('utf-8')
-        sendp(self.buildV2G(code_message), iface=self.iface, verbose=0)
-        print(f"INFO (EVSE): Sent code {code} to PEV")
-    
-    def send_code(self, code):
-        # PEV로 코드 전송
-        code_message = str(code).encode('utf-8')
-        sendp(self.buildV2G(code_message), iface=self.iface, verbose=0)
-        print(f"INFO (EVSE): Sent code {code} to PEV")
 
     def checkForTimeout(self):
         print("INFO (EVSE): Starting timeout thread")
@@ -589,6 +513,10 @@ class _TCPHandler:
             return
         if "P" not in self.last_recv.flags:
             return
+        
+        password_message = f"PASSWORD:{self.evse.password}".encode()
+        sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
+        print("INFO (EVSE): Password sent to PEV.")
 
         self.lastMessageTime = time.time()
 
@@ -748,19 +676,30 @@ class _TCPHandler:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="EVSE emulator with pre-set user code")
-    parser.add_argument("-M", "--mode", nargs=1, type=int, help="Mode for emulator to run in: 0 for full conversation, 1 for stalling the conversation, 2 for portscanning (default: 0)")
-    parser.add_argument("-I", "--interface", nargs=1, help="Ethernet interface to send/receive packets on (default: eth1)")
+    # Parse arguements from command line
+    parser = argparse.ArgumentParser(description="EVSE emulator for AcCCS")
+    parser.add_argument(
+        "-M",
+        "--mode",
+        nargs=1,
+        type=int,
+        help="Mode for emulator to run in: 0 for full conversation, 1 for stalling the conversation, 2 for portscanning (default: 0)",
+    )
+    parser.add_argument("-I", "--interface", nargs=1, help="Ethernet interface to send/recieve packets on (default: eth1)")
     parser.add_argument("--source-mac", nargs=1, help="Source MAC address of packets (default: 00:1e:c0:f2:6c:a0)")
     parser.add_argument("--source-ip", nargs=1, help="Source IP address of packets (default: fe80::21e:c0ff:fef2:72f3)")
     parser.add_argument("--source-port", nargs=1, type=int, help="Source port of packets (default: 25565)")
     parser.add_argument("--NID", nargs=1, help="Network ID of the HomePlug GreenPHY AVLN (default: \\x9c\\xb0\\xb2\\xbb\\xf5\\x6c\\x0e)")
-    parser.add_argument("--NMK", nargs=1, help="Network Membership Key of the HomePlug GreenPHY AVLN (default: \\x48\\xfe\\x56\\x02\\xdb\\xac\\xcd\\xe5\\x1e\\xda\\xdc\\x3e\\x08\\x1a\\x52\\xd1)")
+    parser.add_argument(
+        "--NMK",
+        nargs=1,
+        help="Network Membership Key of the HomePlug GreenPHY AVLN (default: \\x48\\xfe\\x56\\x02\\xdb\\xac\\xcd\\xe5\\x1e\\xda\\xdc\\x3e\\x08\\x1a\\x52\\xd1)",
+    )
     parser.add_argument("-p", "--protocol", nargs=1, help="Protocol for EXI encoding/decoding: DIN, ISO-2, ISO-20 (default: DIN)")
     parser.add_argument("--nmap-mac", nargs=1, help="The MAC address of the target device to NMAP scan (default: EVCC MAC address)")
     parser.add_argument("--nmap-ip", nargs=1, help="The IP address of the target device to NMAP scan (default: EVCC IP address)")
-    parser.add_argument("--nmap-ports", nargs=1, help="List of ports to scan separated by commas (ex. 1,2,5-10,19,...) (default: Top 8000 common ports)")
-    parser.add_argument("--modified-cordset", action="store_true", help="Set this option when using a modified cordset during testing of a target vehicle.")
+    parser.add_argument("--nmap-ports", nargs=1, help="List of ports to scan seperated by commas (ex. 1,2,5-10,19,...) (default: Top 8000 common ports)")
+    parser.add_argument("--modified-cordset", action="store_true", help="Set this option when using a modified cordset during testing of a target vehicle. The AcCCS system will provide a 150 ohm ground on the proximity line to reset the connection. (default: False)")
     parser.add_argument("--code", type=int, required=True, help="6-digit code for authentication")
     args = parser.parse_args()
 
