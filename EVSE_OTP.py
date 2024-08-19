@@ -213,9 +213,9 @@ class _SLACHandler:
         print("INFO (EVSE): Finished sending SECC_ResponseMessage")
 
     def handlePacket(self, pkt):
-        if self.stop:
-            print("INFO (EVSE): SLAC is stopping, ignoring packet.")
-            return  # SLAC이 멈추는 중이면 패킷을 무시
+        #if self.stop:
+        #    print("INFO (EVSE): SLAC is stopping, ignoring packet.")
+        #    return  # SLAC이 멈추는 중이면 패킷을 무시
 
         if pkt[Ether].type != 0x88E1 or pkt[Ether].src == self.sourceMAC:
             return
