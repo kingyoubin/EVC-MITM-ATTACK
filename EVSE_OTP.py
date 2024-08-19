@@ -89,8 +89,8 @@ class EVSE:
             udp = UDP(sport=self.sourcePort, dport=self.destinationPort)
             raw = Raw(load=str(self.user_input_code).encode('utf-8'))
             pkt = eth / ip / udp / raw
-            sendp(pkt, iface=self.iface, verbose=0)
-            print(f"INFO (EVSE): Sent code {self.user_input_code} to PEV")
+            print(f"DEBUG (EVSE): Sending packet with code {self.user_input_code} to PEV")
+            sendp(pkt, iface=self.iface, verbose=1)  # verbose를 1로 설정해 패킷 전송 로그를 확인
         else:
             print("ERROR (EVSE): Missing destination information.")
                 

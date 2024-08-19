@@ -93,9 +93,13 @@ class PEV:
                     print(f"ERROR (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
                     return False
 
-        # 코드 수신 및 검증
         print("INFO (PEV): Waiting for code from EVSE...")
-        sniff(iface=self.iface, prn=handle_packet, stop_filter=lambda x: handle_packet(x), timeout=10)
+        pkt = sniff(iface=self.iface, prn=handle_packet, timeout=10, filter=f"udp and src host {self.evse_ip} and src port {self.evse_port}")
+        if pkt:
+            return True
+        else:
+            print("ERROR (PEV): No packet received.")
+            return False
         
     def get_scope_id(self):
     # netifaces를 사용하여 인터페이스 인덱스를 찾습니다.
