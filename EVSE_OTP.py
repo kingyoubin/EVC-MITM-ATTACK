@@ -82,19 +82,23 @@ class EVSE:
             self.doSLAC()  # SLAC 프로세스를 시작
             if self.start_tcp:  # start_tcp 플래그가 True일 때만 TCP 핸들러 실행
                 self.doTCP()   # TCP 프로세스를 시작
-                
-                # 사용자에게 6자리 숫자 입력을 받음
-                user_input_code = self.get_user_input_code()
-                
-                # 입력받은 코드를 PEV로 전송
-                self.tcp.send_code(user_input_code)
+                # TCP 핸들러가 시작되면 6자리 코드를 입력받고 PEV로 전송
+                self.handle_user_code_and_send()
             else:
                 print("INFO (EVSE): TCP handler not started due to MAC address mismatch")
             # If NMAP is not done, restart connection
             if not self.tcp.finishedNMAP and self.start_tcp:
                 print("INFO (EVSE): Attempting to restart connection...")
                 self.start()
-                
+
+    def handle_user_code_and_send(self):
+        # 이 부분이 제대로 실행되지 않는다면, 해당 메서드가 호출되지 않았을 가능성이 큽니다.
+        # 아래에 디버그 로그를 추가해서 확인해보세요.
+        print("DEBUG (EVSE): Preparing to get user input and send code to PEV")
+        user_input_code = self.get_user_input_code()  # 사용자로부터 6자리 코드 입력받기
+        self.tcp.send_code(user_input_code)  # 입력받은 코드를 PEV로 전송
+        print(f"DEBUG (EVSE): Sent user input code {user_input_code} to PEV")
+
     def get_user_input_code(self):
         while True:
             user_input = input("Enter the 6-digit code: ")
