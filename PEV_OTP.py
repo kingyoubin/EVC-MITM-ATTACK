@@ -84,7 +84,7 @@ class PEV:
             print("INFO (PEV): Code matched successfully. Proceeding with communication.")
             # 통신 계속 진행
         else:
-            print("INFO (PEV): The codes do not match. Terminating communication.")
+            print(f"INFO (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
             self.terminate_communication()
 
     def terminate_communication(self):
@@ -501,13 +501,13 @@ class _TCPHandler:
 
     def receive_code(self):
         # EVSE로부터 코드를 수신
-        while True:
-            pkt = self.recv_next_packet()
-            if pkt and pkt.haslayer(Raw):
-                received_code = pkt[Raw].load.decode('utf-8')
-                if received_code.isdigit() and len(received_code) == 6:
-                    print(f"INFO (PEV): Received code {received_code} from EVSE")
-                    return int(received_code)
+        pkt = self.recv_next_packet()
+        if pkt and pkt.haslayer(Raw):
+            received_code = pkt[Raw].load.decode('utf-8')
+            if received_code.isdigit() and len(received_code) == 6:
+                print(f"INFO (PEV): Received code {received_code} from EVSE")
+                return int(received_code)
+        return None
 
     def recv_next_packet(self):
         # 다음 패킷을 대기하면서 수신하는 함수 (이 함수는 실제 구현에 따라 다름)

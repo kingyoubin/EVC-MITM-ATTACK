@@ -56,7 +56,7 @@ class EVSE:
         self.destinationIP = None
         self.destinationPort = None
         self.start_tcp = True  # TCP 핸들러 실행 여부를 제어하는 플래그 추가
-        self.user_input_code = None
+        self.user_input_code = args.code
 
         self.exi = EXIProcessor(self.protocol)
 
