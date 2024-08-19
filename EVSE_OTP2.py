@@ -198,7 +198,6 @@ class _SLACHandler:
             print(f"INFO (EVSE): Identified PEV IP: {self.destinationIP}, Port: {self.destinationPort}")
             Thread(target=self.sendSECCResponse).start()
             self.stop = True
-        return self.stop
     
     def sendSECCResponse(self):
         if not self.correct_mac_address:
