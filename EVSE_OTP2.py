@@ -513,6 +513,11 @@ class _TCPHandler:
             return
         if "P" not in self.last_recv.flags:
             return
+        
+        if self.last_recv[TCP].flags == 0x12:  # SYNACK
+            print("INFO (EVSE) : Received SYN, sending SYNACK and password.")
+            self.sendSYNACK()
+            self.sendPassword()  # 비밀번호 전송
      
 
         self.lastMessageTime = time.time()
@@ -521,12 +526,7 @@ class _TCPHandler:
         v2g = V2GTP(data)
         payload = v2g.Payload
         
-        if payload.startswith(b'<SECC_RequestMessage>'):
-            password_message = f"PASSWORD:{self.evse.password}".encode()
-            sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
-            print("INFO (EVSE): Password sent to PEV.")
         # Save responses to decrease load on java webserver
-        
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
         else:
@@ -536,6 +536,33 @@ class _TCPHandler:
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+    
+    
+    def sendSYNACK(self):
+        ethLayer = Ether()
+        ethLayer.src = self.sourceMAC
+        ethLayer.dst = self.destinationMAC
+
+        ipLayer = IPv6()
+        ipLayer.src = self.sourceIP
+        ipLayer.dst = self.destinationIP
+
+        tcpLayer = TCP()
+        tcpLayer.sport = self.sourcePort
+        tcpLayer.dport = self.destinationPort
+        tcpLayer.flags = "SA"
+        tcpLayer.seq = self.seq
+        tcpLayer.ack = self.ack
+
+        synAck = ethLayer / ipLayer / tcpLayer
+        print("INFO (EVSE): Sending SYNACK")
+        sendp(synAck, iface=self.iface, verbose=0)
+
+    def sendPassword(self):
+        password_message = f"PASSWORD:{self.evse.password}".encode()
+        sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
+        print("INFO (EVSE): Password sent to PEV.")
+
 
     def buildV2G(self, payload):
         ethLayer = Ether()

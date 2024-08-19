@@ -557,9 +557,7 @@ class _TCPHandler:
         self.seq = self.last_recv[TCP].ack
         self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
-        if self.last_recv.flags == 0x12:
-            print("INFO (PEV) : Recieved SYNACK")
-            self.startSession()
+
         if "F" in self.last_recv.flags:
             self.fin()
             return
@@ -567,16 +565,20 @@ class _TCPHandler:
             return
         
         data = self.last_recv[Raw].load
+        print(f"INFO (PEV) : Received data: {data}")  # 수신한 데이터를 출력
 
-        # 비밀번호 검증 로직 추가
+        # 비밀번호 검증 로직
         if data.startswith(b'PASSWORD:'):
             received_password = data.decode().split(":")[1]
+            print(f"INFO (PEV) : Received password: {received_password}")  # 수신한 비밀번호 출력
             if received_password == self.pev.password:
                 print("INFO (PEV) : Password matched. Proceeding with communication.")
+                self.startSession()  # 비밀번호가 맞으면 세션 시작
             else:
-                print("INFO (PEV) : Password did not match. Terminating connection.")
+                print(f"INFO (PEV) : Password did not match. Expected {self.pev.password}, but received {received_password}. Terminating connection.")
                 self.killThreads()  # 통신 중단
                 return
+        
 
         self.lastMessageTime = time.time()
 
