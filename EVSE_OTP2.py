@@ -1,4 +1,3 @@
-
 """
     Copyright 2023, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
     
@@ -41,7 +40,7 @@ class EVSE:
         self.nmapMAC = args.nmap_mac[0] if args.nmap_mac else ""
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
-        self.password = input("Enter 4-digit password: ")  # 4자리 비밀번호 입력
+        self.input_password = input("Please enter the 4-digit password: ")
         if args.nmap_ports:
             for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
@@ -514,15 +513,15 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
-        self.handlePasswordRequest()  # 비밀번호 전송
-     
-
+        if self.isPasswordRequestPacket(pkt):
+            self.sendPasswordResponse(pkt)
+        elif self.isPasswordPacket(pkt):
+            self.verifyPassword(pkt)
         self.lastMessageTime = time.time()
 
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
-        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
@@ -533,48 +532,20 @@ class _TCPHandler:
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
-    
-    def handlePasswordRequest(self, pkt):
-        if pkt.haslayer(Raw) and pkt[Raw].load == b"PASSWORD_REQUEST":
-            print("INFO (EVSE) : Password request received. Sending password.")
-            password_response_packet = self.buildPasswordResponse()
-            sendp(password_response_packet, iface=self.iface, verbose=0)
-            
-    def buildPasswordResponse(self):
-        # 비밀번호 응답 패킷 생성
-        ethLayer = Ether(src=self.sourceMAC, dst=self.pev.destinationMAC)
-        ipLayer = IPv6(src=self.sourceIP, dst=self.pev.destinationIP)
-        tcpLayer = TCP(sport=self.sourcePort, dport=self.pev.destinationPort, flags="PA", seq=self.seq, ack=self.ack)
-        dataLayer = Raw(load=f"PASSWORD:{self.pev.password}".encode())
-        return ethLayer / ipLayer / tcpLayer / dataLayer
-    
-    
-    def sendSYNACK(self):
-        ethLayer = Ether()
-        ethLayer.src = self.sourceMAC
-        ethLayer.dst = self.destinationMAC
 
-        ipLayer = IPv6()
-        ipLayer.src = self.sourceIP
-        ipLayer.dst = self.destinationIP
+    def isPasswordRequestPacket(self, pkt):
+        return pkt.haslayer(Raw) and pkt[Raw].load.decode() == "PASSWORD_REQUEST"
 
-        tcpLayer = TCP()
-        tcpLayer.sport = self.sourcePort
-        tcpLayer.dport = self.destinationPort
-        tcpLayer.flags = "SA"
-        tcpLayer.seq = self.seq
-        tcpLayer.ack = self.ack
+    def sendPasswordResponse(self, pkt):
+        password_packet = self.buildPasswordPacket(self.evse.password)
+        sendp(password_packet, iface=self.iface, verbose=0)
 
-        synAck = ethLayer / ipLayer / tcpLayer
-        print("INFO (EVSE): Sending SYNACK")
-        sendp(synAck, iface=self.iface, verbose=0)
-
-    def sendPassword(self):
-        password_message = f"PASSWORD:{self.evse.password}".encode()
-        print(f"INFO (EVSE): Sending password: {password_message.decode()}")
-        sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
-        print("INFO (EVSE): Password sent to PEV.")
-
+    def buildPasswordPacket(self, password):
+        ethLayer = Ether(src=self.sourceMAC, dst=pkt[Ether].src)
+        ipLayer = IPv6(src=self.sourceIP, dst=pkt[IPv6].src)
+        tcpLayer = TCP(sport=self.sourcePort, dport=pkt[TCP].sport, flags="PA", seq=self.seq, ack=self.ack)
+        passwordLayer = Raw(load=password.encode())
+        return ethLayer / ipLayer / tcpLayer / passwordLayer
 
     def buildV2G(self, payload):
         ethLayer = Ether()

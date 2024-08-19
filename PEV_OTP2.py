@@ -1,4 +1,3 @@
-
 """
     Copyright 2023, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
 
@@ -41,10 +40,7 @@ class PEV:
         self.nmapMAC = args.nmap_mac[0] if args.nmap_mac else ""
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
-        
-        self.password = str(random.randint(1000, 9999))  # 4자리 비밀번호 생성
-        print(f"Generated Password: {self.password}")
-        
+        self.password = "{:04d}".format(random.randint(0, 9999))
         if args.nmap_ports:
             for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
@@ -548,51 +544,46 @@ class _TCPHandler:
             iface=self.iface,
             verbose=0,
         )
+        
+        self.sendPasswordRequest()
+        
+        received_password = pkt[Raw].load.decode()
+        if received_password == self.pev.password:
+            print("Password verification successful!")
+            # 통신 계속 진행
+        else:
+            print("Password verification failed!")
+            self.terminateSession()
+        
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
-    
-    def buildPasswordRequest(self):
-        # 비밀번호 요청 패킷 생성
+
+    def sendPasswordRequest(self):
+        request_packet = self.buildPasswordRequestPacket()
+        sendp(request_packet, iface=self.iface, verbose=0)
+
+    def buildPasswordRequestPacket(self):
         ethLayer = Ether(src=self.sourceMAC, dst=self.destinationMAC)
         ipLayer = IPv6(src=self.sourceIP, dst=self.destinationIP)
         tcpLayer = TCP(sport=self.sourcePort, dport=self.destinationPort, flags="PA", seq=self.seq, ack=self.ack)
-        dataLayer = Raw(load=b"PASSWORD_REQUEST")
-        return ethLayer / ipLayer / tcpLayer / dataLayer
+        requestLayer = Raw(load="PASSWORD_REQUEST".encode())  # 비밀번호 요청 패킷 생성
+        return ethLayer / ipLayer / tcpLayer / requestLayer
+    
 
     def handlePacket(self, pkt):
         self.last_recv = pkt
         self.seq = self.last_recv[TCP].ack
         self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
-
+        if self.last_recv.flags == 0x12:
+            print("INFO (PEV) : Recieved SYNACK")
+            self.startSession()
         if "F" in self.last_recv.flags:
             self.fin()
             return
         if "P" not in self.last_recv.flags:
             return
-        
-        self.lastMessageTime = time.time()
-        
-        password_request_packet = self.buildPasswordRequest()
-        print("INFO (PEV) : Sending password request.")
-        sendp(password_request_packet, iface=self.iface, verbose=0)
-        
-        data = self.last_recv[Raw].load
-        print(f"INFO (PEV) : Received data: {data}")  # 수신한 데이터를 출력
-
-        # 비밀번호 검증 로직
-        if data.startswith(b'PASSWORD:'):
-            received_password = data.decode().split(":")[1]
-            print(f"INFO (PEV) : Received password: {received_password}")  # 수신한 비밀번호 출력
-            if received_password == self.pev.password:
-                print("INFO (PEV) : Password matched. Proceeding with communication.")
-                self.startSession()  # 비밀번호가 맞으면 세션 시작
-            else:
-                print(f"INFO (PEV) : Password did not match. Expected {self.pev.password}, but received {received_password}. Terminating connection.")
-                self.killThreads()  # 통신 중단
-                return
-        
 
         self.lastMessageTime = time.time()
 
