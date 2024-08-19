@@ -81,31 +81,29 @@ class EVSE:
         else:
             self.toggleProximity()
             self.doSLAC()
-            if self.start_tcp:
-                print("DEBUG (EVSE): Starting TCP process...")
-                self.doTCP()
-            else:
-                print("INFO (EVSE): TCP handler not started due to MAC address mismatch")
+            if self.destinationIP and self.destinationPort:
+                if self.send_code_to_pev():
+                    print("INFO (EVSE): Code validated. Starting TCP handler.")
+                    self.doTCP()
+                else:
+                    print("ERROR (EVSE): Code validation failed. Terminating process.")
+                    return
 
-            if not self.tcp.finishedNMAP and self.start_tcp:
-                print("INFO (EVSE): Attempting to restart connection...")
-                self.start()
+    def send_code_to_pev(self):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((self.destinationIP, self.destinationPort))
+                s.sendall(str(self.user_input_code).encode('utf-8'))
 
-    def handle_user_code_and_send(self):
-        # 이 부분이 제대로 실행되지 않는다면, 해당 메서드가 호출되지 않았을 가능성이 큽니다.
-        # 아래에 디버그 로그를 추가해서 확인해보세요.
-        print("DEBUG (EVSE): Preparing to get user input and send code to PEV")
-        user_input_code = self.get_user_input_code()  # 사용자로부터 6자리 코드 입력받기
-        self.tcp.send_code(user_input_code)  # 입력받은 코드를 PEV로 전송
-        print(f"DEBUG (EVSE): Sent user input code {user_input_code} to PEV")
-
-    def get_user_input_code(self):
-        while True:
-            user_input = input("Enter the 6-digit code: ")
-            if user_input.isdigit() and len(user_input) == 6:
-                return int(user_input)
-            else:
-                print("Invalid input. Please enter exactly 6 digits.")
+                # PEV로부터 응답 대기 (예: 'OK' 메시지)
+                response = s.recv(1024).decode('utf-8')
+                if response == 'OK':
+                    return True
+                else:
+                    return False
+        except Exception as e:
+            print(f"ERROR (EVSE): Failed to send code to PEV - {e}")
+            return False
                 
     # Close the circuit for the proximity pins
     def closeProximity(self):
@@ -129,10 +127,9 @@ class EVSE:
 
     # Starts TCP/IPv6 thread that handles layer 3 comms
     def doTCP(self):
-        print("INFO (EVSE): Starting TCP handler")  # 추가된 로그
-        self.tcp.start()
-        print("INFO (EVSE): TCP handler started")  # 추가된 로그
-        print("INFO (EVSE): Done TCP")
+        print("INFO (EVSE): Starting TCP handler")
+        self.tcp_handler = _TCPHandler(self)
+        self.tcp_handler.start()
 
     # Starts SLAC thread that handles layer 2 comms
     def doSLAC(self):

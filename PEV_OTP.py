@@ -67,35 +67,44 @@ class PEV:
         time.sleep(10)
         self.toggleProximity()
         self.doSLAC()
-        self.doTCP()
-
         # TCP 통신을 통해 EVSE로부터 6자리 숫자 수신 및 비교
-        self.validate_code_with_evse()
-
+        
+        if self.receive_and_validate_code():
+            print("INFO (PEV): Code validated. Starting TCP handler.")
+            self.doTCP()
+        else:
+            print("ERROR (PEV): Code validation failed. Terminating process.")
+            return
         # If NMAP is not done, restart connection
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
             self.start()
 
-    def validate_code_with_evse(self):
-        received_code = self.tcp.receive_code()
-
-        if received_code == self.generated_code:
-            print("INFO (PEV): Code matched successfully. Proceeding with communication.")
-            # 통신 계속 진행
-        else:
-            print(f"INFO (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
-            self.terminate_communication()
-
-    def terminate_communication(self):
-        print("INFO (PEV): Communication terminated.")
-        self.tcp.terminate()  # TCP 핸들러 종료
-        self.running = False  # 메인 루프 종료 플래그 설정
+    def receive_and_validate_code(self):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(('', self.evse_port))
+                s.listen(1)
+                conn, addr = s.accept()
+                with conn:
+                    received_code = int(conn.recv(1024).decode('utf-8'))
+                    print(f"INFO (PEV): Received code {received_code} from EVSE")
+                    if received_code == self.generated_code:
+                        conn.sendall(b'OK')
+                        return True
+                    else:
+                        conn.sendall(b'FAIL')
+                        return False
+        except Exception as e:
+            print(f"ERROR (PEV): Failed to receive code from EVSE - {e}")
+            return False
 
 
     def doTCP(self):
-        self.tcp.start()
-        print("INFO (PEV) : Done TCP")
+        # 기존 TCP 핸들러 시작 로직
+        print("INFO (PEV): Starting TCP handler")
+        self.tcp_handler = _TCPHandler(self)
+        self.tcp_handler.start()
 
     def doSLAC(self):
         print("INFO (PEV) : Starting SLAC")
