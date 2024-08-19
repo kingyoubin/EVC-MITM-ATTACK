@@ -136,7 +136,7 @@ class _SLACHandler:
         self.runID = b"\xf4\x00\x37\xd0\x00\x5c\x00\x7f"
 
         self.timeSinceLastPkt = time.time()
-        self.timeout = 18  # How long to wait for a message to timeout
+        self.timeout = 13  # How long to wait for a message to timeout
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
 
