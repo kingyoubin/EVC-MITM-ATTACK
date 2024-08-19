@@ -67,7 +67,7 @@ class PEV:
         self.toggleProximity()
         self.doSLAC()
         self.doTCP()
-        
+
         # TCP 통신을 통해 EVSE로부터 6자리 숫자 수신 및 비교
         self.validate_code_with_evse()
 
@@ -84,13 +84,13 @@ class PEV:
             # 통신 계속 진행
         else:
             print("INFO (PEV): The codes do not match. Terminating communication.")
-            # 통신 종료
             self.terminate_communication()
 
     def terminate_communication(self):
         print("INFO (PEV): Communication terminated.")
-        # 통신 종료 로직을 여기에 추가
-        pass
+        self.tcp.terminate()  # TCP 핸들러 종료
+        self.running = False  # 메인 루프 종료 플래그 설정
+
 
     def doTCP(self):
         self.tcp.start()
@@ -512,6 +512,18 @@ class _TCPHandler:
         # 다음 패킷을 대기하면서 수신하는 함수 (이 함수는 실제 구현에 따라 다름)
         pkt = sniff(iface=self.iface, count=1)
         return pkt[0] if pkt else None
+
+    def terminate(self):
+        print("INFO (PEV): Terminating TCP handler and stopping all related threads.")
+        self.running = False  # TCP 핸들러 종료 플래그 설정
+        if self.recvThread and self.recvThread.is_alive():
+            self.recvThread.stop()
+        if self.handshakeThread and self.handshakeThread.is_alive():
+            self.handshakeThread.join()
+        if self.timeoutThread and self.timeoutThread.is_alive():
+            self.timeoutThread.join()
+        if self.neighborSolicitationThread and self.neighborSolicitationThread.is_alive():
+            self.neighborSolicitationThread.join()
 
     def checkForTimeout(self):
         print("INFO (PEV) : Starting timeout thread")

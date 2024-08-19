@@ -81,15 +81,14 @@ class EVSE:
             self.toggleProximity()
             self.doSLAC()  # SLAC 프로세스를 시작
             if self.start_tcp:  # start_tcp 플래그가 True일 때만 TCP 핸들러 실행
+                print("DEBUG (EVSE): Starting TCP process...")
                 self.doTCP()   # TCP 프로세스를 시작
-                # TCP 핸들러가 시작되면 6자리 코드를 입력받고 PEV로 전송
-                self.handle_user_code_and_send()
             else:
                 print("INFO (EVSE): TCP handler not started due to MAC address mismatch")
-            # If NMAP is not done, restart connection
-            if not self.tcp.finishedNMAP and self.start_tcp:
-                print("INFO (EVSE): Attempting to restart connection...")
-                self.start()
+        
+        if not self.tcp.finishedNMAP and self.start_tcp:
+            print("INFO (EVSE): Attempting to restart connection...")
+            self.start()
 
     def handle_user_code_and_send(self):
         # 이 부분이 제대로 실행되지 않는다면, 해당 메서드가 호출되지 않았을 가능성이 큽니다.
@@ -458,22 +457,32 @@ class _TCPHandler:
 
         self.seq = 10000
         self.ack = 0
+        self.sessionID = "00"
 
         self.exi = self.evse.exi
         self.xml = XMLBuilder(self.exi)
         self.msgList = {}
 
         self.stop = False
-        self.scanner = None
+        self.startSniff = False
         self.finishedNMAP = False
+        self.lastPort = 0
+        
+        self.scanner = None
 
-        self.timeout = 5
+        self.timeout = 15
+
+        self.soc = 10
 
     def start(self):
         self.msgList = {}
         self.running = True
+        self.prechargeCount = 0
         print("INFO (EVSE): Starting TCP")
-        self.startSniff = False
+
+        # TCP 핸들러가 시작되면 바로 사용자 입력을 받아서 PEV로 전송하는 부분
+        user_input_code = self.evse.get_user_input_code()
+        self.send_code(user_input_code)
 
         self.recvThread = AsyncSniffer(
             iface=self.iface,
@@ -483,24 +492,25 @@ class _TCPHandler:
         )
         self.recvThread.start()
 
-        while not self.startSniff:
-            continue
-
-        self.handshakeThread = AsyncSniffer(
-            count=1, iface=self.iface, lfilter=lambda x: x.haslayer("IPv6") and x.haslayer("TCP") and x[TCP].flags == "S", prn=self.handshake
-        )
+        self.handshakeThread = Thread(target=self.handshake)
         self.handshakeThread.start()
-
-        self.neighborSolicitationThread = AsyncSniffer(
-            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborSoliciation
-        )
-        self.neighborSolicitationThread.start()
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
 
+        self.neighborSolicitationThread = AsyncSniffer(
+            iface=self.iface, lfilter=lambda x: x.haslayer("ICMPv6ND_NS") and x[ICMPv6ND_NS].tgt == self.sourceIP, prn=self.sendNeighborAdvertisement
+        )
+        self.neighborSolicitationThread.start()
+
         while self.running:
             time.sleep(1)
+
+    def send_code(self, code):
+        # PEV로 코드 전송
+        code_message = str(code).encode('utf-8')
+        sendp(self.buildV2G(code_message), iface=self.iface, verbose=0)
+        print(f"INFO (EVSE): Sent code {code} to PEV")
     
     def send_code(self, code):
         # PEV로 코드 전송
