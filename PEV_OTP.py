@@ -18,8 +18,7 @@ import os.path
 import random
 # from smbus import SMBus
 import argparse
-import socket
-
+from scapy.all import sendp, Ether, IPv6, UDP, Raw
 
 class PEV:
 
@@ -82,35 +81,21 @@ class PEV:
         if not self.tcp.finishedNMAP:
             print("INFO (PEV) : Attempting to restart connection...")
             self.start()
-
+            
     def receive_and_validate_code(self):
-        if self.destinationIP is None or self.destinationPort is None:
-            print("ERROR (PEV): Destination IP or Port not set. Cannot receive code.")
-            return False
-        
-        try:
-            # scope_id를 설정합니다.
-            self.get_scope_id()
-
-            if self.scope_id is None:
-                print("ERROR (PEV): Unable to determine scope_id for the interface.")
-                return False
-
-            # IPv6 소켓을 사용하여 연결을 설정합니다.
-            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
-                s.connect((self.destinationIP, self.destinationPort, 0, self.scope_id))
-                received_code = int(s.recv(1024).decode('utf-8'))
+        def handle_packet(pkt):
+            if pkt.haslayer(Raw):
+                received_code = pkt[Raw].load.decode('utf-8')
                 print(f"INFO (PEV): Received code {received_code} from EVSE")
-                if received_code == self.generated_code:
-                    s.sendall(b'OK')
+                if received_code == str(self.generated_code):
                     return True
                 else:
                     print(f"ERROR (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
-                    s.sendall(b'FAIL')
                     return False
-        except Exception as e:
-            print(f"ERROR (PEV): Failed to receive or validate code from EVSE - {e}")
-            return False
+
+        # 코드 수신 및 검증
+        print("INFO (PEV): Waiting for code from EVSE...")
+        sniff(iface=self.iface, prn=handle_packet, stop_filter=lambda x: handle_packet(x), timeout=10)
         
     def get_scope_id(self):
     # netifaces를 사용하여 인터페이스 인덱스를 찾습니다.
@@ -211,9 +196,10 @@ class _SLACHandler:
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_ResponseMessage"):
-            self.pev.destinationIP = pkt[SECC_ResponseMessage].TargetAddress
-            self.pev.destinationPort = pkt[SECC_ResponseMessage].TargetPort
-            print(f"INFO (PEV): Identified EVSE IP: {self.pev.destinationIP}, Port: {self.pev.destinationPort}")
+            self.pev.evse_ip = pkt[SECC_ResponseMessage].TargetAddress
+            self.pev.evse_mac = pkt[Ether].src
+            self.pev.evse_port = pkt[SECC_ResponseMessage].TargetPort
+            print(f"INFO (PEV): Identified EVSE IP: {self.pev.evse_ip}, Port: {self.pev.evse_port}")
             if self.neighborSolicitationThread.running:
                 self.neighborSolicitationThread.stop()
             return True

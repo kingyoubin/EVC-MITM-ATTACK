@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 import binascii
 # from smbus import SMBus
 import argparse
-import socket
+from scapy.all import sendp, Ether, IPv6, UDP, Raw
 
 
 class EVSE:
@@ -75,36 +75,24 @@ class EVSE:
         self.ALL_OFF = 0b0
 
 
-    def start(self, restart_slac_only=False):
-        if restart_slac_only:
-            print("INFO (EVSE): Restarting SLAC protocol only")
-            self.doSLAC()
-        else:
-            self.toggleProximity()
-            self.doSLAC()
-            if self.destinationIP and self.destinationPort:
-                if self.send_code_to_pev():
-                    print("INFO (EVSE): Code validated. Starting TCP handler.")
-                    self.doTCP()
-                else:
-                    print("ERROR (EVSE): Code validation failed. Terminating process.")
-                    return
+    def start(self):
+        self.toggleProximity()
+        self.doSLAC()
+        if self.destinationIP and self.destinationMAC and self.destinationPort:
+            self.send_code_to_pev()
+            self.doTCP()
 
     def send_code_to_pev(self):
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((self.destinationIP, self.destinationPort))
-                s.sendall(str(self.user_input_code).encode('utf-8'))
-
-                # PEV로부터 응답 대기 (예: 'OK' 메시지)
-                response = s.recv(1024).decode('utf-8')
-                if response == 'OK':
-                    return True
-                else:
-                    return False
-        except Exception as e:
-            print(f"ERROR (EVSE): Failed to send code to PEV - {e}")
-            return False
+        if self.destinationIP and self.destinationMAC and self.destinationPort:
+            eth = Ether(src=self.sourceMAC, dst=self.destinationMAC)
+            ip = IPv6(src=self.sourceIP, dst=self.destinationIP)
+            udp = UDP(sport=self.sourcePort, dport=self.destinationPort)
+            raw = Raw(load=str(self.user_input_code).encode('utf-8'))
+            pkt = eth / ip / udp / raw
+            sendp(pkt, iface=self.iface, verbose=0)
+            print(f"INFO (EVSE): Sent code {self.user_input_code} to PEV")
+        else:
+            print("ERROR (EVSE): Missing destination information.")
                 
     # Close the circuit for the proximity pins
     def closeProximity(self):
@@ -200,6 +188,7 @@ class _SLACHandler:
         if pkt.haslayer("SECC_RequestMessage"):
             print("INFO (EVSE): Received SECC_RequestMessage")
             self.destinationIP = pkt[IPv6].src
+            self.destinationMAC = pkt[Ether].src
             self.destinationPort = pkt[UDP].sport
             print(f"INFO (EVSE): Identified PEV IP: {self.destinationIP}, Port: {self.destinationPort}")
             Thread(target=self.sendSECCResponse).start()
