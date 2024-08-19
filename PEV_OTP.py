@@ -88,8 +88,9 @@ class PEV:
             return False
         
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((self.destinationIP, self.destinationPort))
+            # IPv6 소켓을 사용하여 연결을 설정합니다.
+            with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+                s.connect((self.destinationIP, self.destinationPort, 0, 0))
                 received_code = int(s.recv(1024).decode('utf-8'))
                 print(f"INFO (PEV): Received code {received_code} from EVSE")
                 if received_code == self.generated_code:
