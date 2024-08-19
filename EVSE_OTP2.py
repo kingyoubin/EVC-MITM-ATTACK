@@ -1,3 +1,4 @@
+
 """
     Copyright 2023, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
     
@@ -56,7 +57,6 @@ class EVSE:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
-        self.user_input_code = args.code
 
         self.exi = EXIProcessor(self.protocol)
 
@@ -75,17 +75,17 @@ class EVSE:
 
     # Start the emulator
     def start(self):
+        # Initialize the I2C bus for wwrite
+        # self.bus.write_byte_data(self.I2C_ADDR, 0x00, 0x00)
+
         self.toggleProximity()
         self.doSLAC()
-        # 코드 전송이 제대로 이루어지는지 확인하기 위해 디버깅 메시지 추가
-        if self.destinationIP and self.destinationMAC and self.destinationPort:
-            print("DEBUG (EVSE): Ready to send code to PEV")
-            self.send_code_to_pev()
-        else:
-            print("ERROR (EVSE): Destination details are missing, cannot send code.")
-
         self.doTCP()
-        
+        # If NMAP is not done, restart connection
+        if not self.tcp.finishedNMAP:
+            print("INFO (EVSE): Attempting to restart connection...")
+            self.start()
+
     # Close the circuit for the proximity pins
     def closeProximity(self):
         if self.modified_cordset:
@@ -513,17 +513,20 @@ class _TCPHandler:
             return
         if "P" not in self.last_recv.flags:
             return
-        
-        password_message = f"PASSWORD:{self.evse.password}".encode()
-        sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
-        print("INFO (EVSE): Password sent to PEV.")
+     
 
         self.lastMessageTime = time.time()
 
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
+        
+        if payload.startswith(b'<SECC_RequestMessage>'):
+            password_message = f"PASSWORD:{self.evse.password}".encode()
+            sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
+            print("INFO (EVSE): Password sent to PEV.")
         # Save responses to decrease load on java webserver
+        
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
         else:
@@ -700,7 +703,6 @@ if __name__ == "__main__":
     parser.add_argument("--nmap-ip", nargs=1, help="The IP address of the target device to NMAP scan (default: EVCC IP address)")
     parser.add_argument("--nmap-ports", nargs=1, help="List of ports to scan seperated by commas (ex. 1,2,5-10,19,...) (default: Top 8000 common ports)")
     parser.add_argument("--modified-cordset", action="store_true", help="Set this option when using a modified cordset during testing of a target vehicle. The AcCCS system will provide a 150 ohm ground on the proximity line to reset the connection. (default: False)")
-    parser.add_argument("--code", type=int, required=True, help="6-digit code for authentication")
     args = parser.parse_args()
 
     evse = EVSE(args)
