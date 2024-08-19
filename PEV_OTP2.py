@@ -564,6 +564,8 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
+        self.lastMessageTime = time.time()
+        
         data = self.last_recv[Raw].load
         print(f"INFO (PEV) : Received data: {data}")  # 수신한 데이터를 출력
 
