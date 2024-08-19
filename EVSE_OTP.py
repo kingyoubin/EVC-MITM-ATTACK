@@ -78,25 +78,7 @@ class EVSE:
     def start(self):
         self.toggleProximity()
         self.doSLAC()
-        if self.destinationIP and self.destinationMAC and self.destinationPort:
-            self.send_code_to_pev()
-            self.doTCP()
-
-    def send_code_to_pev(self):
-        if self.destinationIP and self.destinationMAC and self.destinationPort:
-            eth = Ether(src=self.sourceMAC, dst=self.destinationMAC)
-            ip = IPv6(src=self.sourceIP, dst=self.destinationIP)
-            udp = UDP(sport=self.sourcePort, dport=self.destinationPort)
-            raw = Raw(load=str(self.user_input_code).encode('utf-8'))
-            pkt = eth / ip / udp / raw
-
-            print(f"DEBUG (EVSE): Prepared packet with code {self.user_input_code} to send to PEV")
-            print(f"DEBUG (EVSE): Packet details: {pkt.summary()}")
-
-            sendp(pkt, iface=self.iface, verbose=1)  # 패킷 전송 확인을 위해 verbose=1 설정
-            print("DEBUG (EVSE): Packet sent to PEV.")
-        else:
-            print("ERROR (EVSE): Missing destination information.")
+        self.doTCP()
                 
     # Close the circuit for the proximity pins
     def closeProximity(self):
@@ -160,6 +142,8 @@ class _SLACHandler:
 
         self.sniffThread = Thread(target=self.startSniff)
         self.sniffThread.start()
+        
+        self.send_code_to_pev()
 
         self.timeoutThread = Thread(target=self.checkForTimeout)
         self.timeoutThread.start()
@@ -181,6 +165,23 @@ class _SLACHandler:
                 print("INFO (EVSE): SLAC timed out, resetting connection...")
                 self.evse.toggleProximity()
                 self.lastMessageTime = time.time()
+                
+    def send_code_to_pev(self):
+        if self.destinationIP and self.destinationMAC and self.destinationPort:
+            eth = Ether(src=self.sourceMAC, dst=self.destinationMAC)
+            ip = IPv6(src=self.sourceIP, dst=self.destinationIP)
+            udp = UDP(sport=self.sourcePort, dport=self.destinationPort)
+            raw = Raw(load=str(self.user_input_code).encode('utf-8'))
+            pkt = eth / ip / udp / raw
+
+            print(f"DEBUG (EVSE): Prepared packet with code {self.user_input_code} to send to PEV")
+            print(f"DEBUG (EVSE): Packet details: {pkt.summary()}")
+
+            sendp(pkt, iface=self.iface, verbose=1)  # 패킷 전송 확인을 위해 verbose=1 설정
+            print("DEBUG (EVSE): Packet sent to PEV.")
+        else:
+            print("ERROR (EVSE): Missing destination information.")
+                
 
     def startSniff(self):
         sniff(iface=self.iface, prn=self.handlePacket, stop_filter=self.stopSniff)
