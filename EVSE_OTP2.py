@@ -514,10 +514,7 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
-        if self.last_recv[TCP].flags == 0x12:  # SYNACK
-            print("INFO (EVSE) : Received SYN, sending SYNACK and password.")
-            self.sendSYNACK()
-            self.sendPassword()  # 비밀번호 전송
+        self.sendPassword()  # 비밀번호 전송
      
 
         self.lastMessageTime = time.time()
@@ -560,6 +557,7 @@ class _TCPHandler:
 
     def sendPassword(self):
         password_message = f"PASSWORD:{self.evse.password}".encode()
+        print(f"INFO (EVSE): Sending password: {password_message.decode()}")
         sendp(self.buildV2G(password_message), iface=self.iface, verbose=0)
         print("INFO (EVSE): Password sent to PEV.")
 
