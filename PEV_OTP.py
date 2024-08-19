@@ -64,6 +64,7 @@ class PEV:
     def start(self):
         self.generated_code = random.randint(100000, 999999)
         print(f"INFO (PEV): Generated code for validation: {self.generated_code}")
+        time.sleep(5)
         self.toggleProximity()
         self.doSLAC()
         self.doTCP()
@@ -135,7 +136,7 @@ class _SLACHandler:
         self.runID = b"\xf4\x00\x37\xd0\x00\x5c\x00\x7f"
 
         self.timeSinceLastPkt = time.time()
-        self.timeout = 20  # How long to wait for a message to timeout
+        self.timeout = 8  # How long to wait for a message to timeout
         self.stop = False
         self.attenuation_records = []  # 감쇄값 기록
 
