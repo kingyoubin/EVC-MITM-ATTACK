@@ -64,7 +64,6 @@ class PEV:
     def start(self):
         self.generated_code = random.randint(100000, 999999)
         print(f"INFO (PEV): Generated code for validation: {self.generated_code}")
-        time.sleep(8)
         self.timeSinceLastPkt = time.time()
         self.toggleProximity()
         self.doSLAC()
