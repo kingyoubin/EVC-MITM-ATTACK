@@ -155,7 +155,7 @@ class _SLACHandler:
         self.NID = self.evse.NID
         self.NMK = self.evse.NMK
 
-        self.timeout = 8
+        self.timeout = 10
         self.stop = False
         self.restart_requested = False  # SLAC 재시작 요청 플래그
         self.correct_mac_address = False  # MAC 주소 일치 여부 플래그
