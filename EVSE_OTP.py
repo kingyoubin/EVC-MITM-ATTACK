@@ -24,6 +24,7 @@ import xml.etree.ElementTree as ET
 import binascii
 # from smbus import SMBus
 import argparse
+import socket
 
 
 class EVSE:
@@ -197,14 +198,12 @@ class _SLACHandler:
 
     def stopSniff(self, pkt):
         if pkt.haslayer("SECC_RequestMessage"):
-            print("INDO (EVSE): Recieved SECC_RequestMessage")
-            # self.evse.destinationMAC = pkt[Ether].src
-            # use this to send 3 secc responses incase car doesnt see one
+            print("INFO (EVSE): Received SECC_RequestMessage")
             self.destinationIP = pkt[IPv6].src
             self.destinationPort = pkt[UDP].sport
+            print(f"INFO (EVSE): Identified PEV IP: {self.destinationIP}, Port: {self.destinationPort}")
             Thread(target=self.sendSECCResponse).start()
             self.stop = True
-        return self.stop
     
     def sendSECCResponse(self):
         if not self.correct_mac_address:

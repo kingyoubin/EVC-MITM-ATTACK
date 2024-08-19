@@ -18,6 +18,7 @@ import os.path
 import random
 # from smbus import SMBus
 import argparse
+import socket
 
 
 class PEV:
@@ -93,10 +94,11 @@ class PEV:
                         conn.sendall(b'OK')
                         return True
                     else:
+                        print(f"ERROR (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
                         conn.sendall(b'FAIL')
                         return False
         except Exception as e:
-            print(f"ERROR (PEV): Failed to receive code from EVSE - {e}")
+            print(f"ERROR (PEV): Failed to receive or validate code from EVSE - {e}")
             return False
 
 
