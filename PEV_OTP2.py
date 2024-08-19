@@ -41,6 +41,7 @@ class PEV:
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
         self.password = "{:04d}".format(random.randint(0, 9999))
+        print(self.password)
         if args.nmap_ports:
             for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
