@@ -514,7 +514,7 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
-        self.sendPassword()  # 비밀번호 전송
+        self.handlePasswordRequest()  # 비밀번호 전송
      
 
         self.lastMessageTime = time.time()
@@ -533,6 +533,20 @@ class _TCPHandler:
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+    
+    def handlePasswordRequest(self, pkt):
+        if pkt.haslayer(Raw) and pkt[Raw].load == b"PASSWORD_REQUEST":
+            print("INFO (EVSE) : Password request received. Sending password.")
+            password_response_packet = self.buildPasswordResponse()
+            sendp(password_response_packet, iface=self.iface, verbose=0)
+            
+    def buildPasswordResponse(self):
+        # 비밀번호 응답 패킷 생성
+        ethLayer = Ether(src=self.sourceMAC, dst=self.pev.destinationMAC)
+        ipLayer = IPv6(src=self.sourceIP, dst=self.pev.destinationIP)
+        tcpLayer = TCP(sport=self.sourcePort, dport=self.pev.destinationPort, flags="PA", seq=self.seq, ack=self.ack)
+        dataLayer = Raw(load=f"PASSWORD:{self.pev.password}".encode())
+        return ethLayer / ipLayer / tcpLayer / dataLayer
     
     
     def sendSYNACK(self):

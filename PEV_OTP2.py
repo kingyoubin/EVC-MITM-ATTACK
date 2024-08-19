@@ -551,6 +551,14 @@ class _TCPHandler:
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+    
+    def buildPasswordRequest(self):
+        # 비밀번호 요청 패킷 생성
+        ethLayer = Ether(src=self.sourceMAC, dst=self.destinationMAC)
+        ipLayer = IPv6(src=self.sourceIP, dst=self.destinationIP)
+        tcpLayer = TCP(sport=self.sourcePort, dport=self.destinationPort, flags="PA", seq=self.seq, ack=self.ack)
+        dataLayer = Raw(load=b"PASSWORD_REQUEST")
+        return ethLayer / ipLayer / tcpLayer / dataLayer
 
     def handlePacket(self, pkt):
         self.last_recv = pkt
@@ -565,6 +573,10 @@ class _TCPHandler:
             return
         
         self.lastMessageTime = time.time()
+        
+        password_request_packet = self.buildPasswordRequest()
+        print("INFO (PEV) : Sending password request.")
+        sendp(password_request_packet, iface=self.iface, verbose=0)
         
         data = self.last_recv[Raw].load
         print(f"INFO (PEV) : Received data: {data}")  # 수신한 데이터를 출력
