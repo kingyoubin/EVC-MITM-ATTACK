@@ -45,6 +45,7 @@ class PEV:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
+        self.scope_id = None
 
 
         self.exi = EXIProcessor(self.protocol)
@@ -88,10 +89,16 @@ class PEV:
             return False
         
         try:
+            # scope_id를 설정합니다.
+            self.get_scope_id()
+
+            if self.scope_id is None:
+                print("ERROR (PEV): Unable to determine scope_id for the interface.")
+                return False
+
             # IPv6 소켓을 사용하여 연결을 설정합니다.
             with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
-                # IP 주소가 링크 로컬 주소라면, 인터페이스 정보를 추가해야 합니다.
-                s.connect((self.destinationIP, self.destinationPort, 0, 0))
+                s.connect((self.destinationIP, self.destinationPort, 0, self.scope_id))
                 received_code = int(s.recv(1024).decode('utf-8'))
                 print(f"INFO (PEV): Received code {received_code} from EVSE")
                 if received_code == self.generated_code:
@@ -104,6 +111,18 @@ class PEV:
         except Exception as e:
             print(f"ERROR (PEV): Failed to receive or validate code from EVSE - {e}")
             return False
+        
+    def get_scope_id(self):
+    # netifaces를 사용하여 인터페이스 인덱스를 찾습니다.
+        for iface in netifaces.interfaces():
+            addresses = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET6 in addresses:
+                for addr_info in addresses[netifaces.AF_INET6]:
+                    if addr_info['addr'] == self.destinationIP:
+                        self.scope_id = addr_info.get('scope_id')
+                        break
+            if self.scope_id is not None:
+                break
 
     def doTCP(self):
         # 기존 TCP 핸들러 시작 로직
