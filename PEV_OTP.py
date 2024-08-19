@@ -45,8 +45,7 @@ class PEV:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
-        self.evse_ip = None  # EVSE의 IP 주소
-        self.evse_port = evse_port  # EVSE에서 사용하고 있는 포트
+
 
         self.exi = EXIProcessor(self.protocol)
 
@@ -84,21 +83,22 @@ class PEV:
             self.start()
 
     def receive_and_validate_code(self):
+        if self.destinationIP is None or self.destinationPort is None:
+            print("ERROR (PEV): Destination IP or Port not set. Cannot receive code.")
+            return False
+        
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind(('', self.evse_port))
-                s.listen(1)
-                conn, addr = s.accept()
-                with conn:
-                    received_code = int(conn.recv(1024).decode('utf-8'))
-                    print(f"INFO (PEV): Received code {received_code} from EVSE")
-                    if received_code == self.generated_code:
-                        conn.sendall(b'OK')
-                        return True
-                    else:
-                        print(f"ERROR (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
-                        conn.sendall(b'FAIL')
-                        return False
+                s.connect((self.destinationIP, self.destinationPort))
+                received_code = int(s.recv(1024).decode('utf-8'))
+                print(f"INFO (PEV): Received code {received_code} from EVSE")
+                if received_code == self.generated_code:
+                    s.sendall(b'OK')
+                    return True
+                else:
+                    print(f"ERROR (PEV): Code mismatch! Received: {received_code}, Expected: {self.generated_code}")
+                    s.sendall(b'FAIL')
+                    return False
         except Exception as e:
             print(f"ERROR (PEV): Failed to receive or validate code from EVSE - {e}")
             return False
@@ -193,6 +193,7 @@ class _SLACHandler:
         if pkt.haslayer("SECC_ResponseMessage"):
             self.pev.destinationIP = pkt[SECC_ResponseMessage].TargetAddress
             self.pev.destinationPort = pkt[SECC_ResponseMessage].TargetPort
+            print(f"INFO (PEV): Identified EVSE IP: {self.pev.destinationIP}, Port: {self.pev.destinationPort}")
             if self.neighborSolicitationThread.running:
                 self.neighborSolicitationThread.stop()
             return True
