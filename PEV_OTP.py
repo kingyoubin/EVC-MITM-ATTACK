@@ -45,6 +45,8 @@ class PEV:
         self.destinationMAC = None
         self.destinationIP = None
         self.destinationPort = None
+        self.evse_ip = evse_ip  # EVSE의 IP 주소
+        self.evse_port = evse_port  # EVSE에서 사용하고 있는 포트
 
         self.exi = EXIProcessor(self.protocol)
 
