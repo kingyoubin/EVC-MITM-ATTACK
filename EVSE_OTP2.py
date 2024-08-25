@@ -1,11 +1,3 @@
-"""
-    Copyright 2023, Battelle Energy Alliance, LLC, ALL RIGHTS RESERVED
-    
-    This class is used to emulate a EVSE when talking to an PEV. Handles level 2 SLAC communications
-    and level 3 UDP and TCP communications to the electric vehicle.
-"""
-
-# need to do this to import the custom SECC and V2G scapy layer
 import sys, os
 
 sys.path.append("./external_libs/HomePlugPWN")
@@ -503,37 +495,34 @@ class _TCPHandler:
             self.neighborSolicitationThread.stop()
 
     def handlePacket(self, pkt):
-        self.seq = pkt[TCP].ack
-        self.ack = pkt[TCP].seq + len(pkt[TCP].payload)
-        
-        if not pkt.haslayer(TCP):
-            return  # TCP 레이어가 없는 경우 처리하지 않음
-
         self.last_recv = pkt
+        self.seq = self.last_recv[TCP].ack
+        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
+        if "F" in self.last_recv[TCP].flags:
+            self.fin()
+            return
+        if "P" not in self.last_recv[TCP].flags:
+            return
+
+        # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
             try:
                 received_data = pkt[Raw].load.decode('utf-8')
-                if received_data == "PASSWORD_REQUEST":
+                if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
                     self.sendPasswordResponse(pkt)
                     return  # 패스워드 전송 후 나머지 처리를 중단합니다.
             except UnicodeDecodeError:
                 print("Received non-UTF-8 data, processing as EXI binary data.")
+                print(f"Raw data: {pkt[Raw].load}")
+
+                # EXI 데이터 처리
                 exi_data = pkt[Raw].load
                 exi_decoded = self.getEXIFromPayload(exi_data)
                 if exi_decoded:
                     sendp(self.buildV2G(binascii.unhexlify(exi_decoded)), iface=self.iface, verbose=0)
                 else:
                     print("Failed to decode EXI data.")
-
-        # 이후 V2G 메시지 처리
-        data = pkt[Raw].load
-        v2g = V2GTP(data)
-        payload = v2g.Payload
-        self.seq = pkt[TCP].ack  # 상대방이 보낸 ACK 값을 Seq로 설정
-        self.ack = pkt[TCP].seq + len(pkt[TCP].payload)  # 상대방의 Seq에 데이터 길이를 더해 ACK로 설정
-
-        sendp(self.buildV2G(binascii.unhexlify(payload)), iface=self.iface, verbose=0)
 
         # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
