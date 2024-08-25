@@ -569,39 +569,36 @@ class _TCPHandler:
 
     def handlePacket(self, pkt):
         self.last_recv = pkt
-        self.seq = self.last_recv[TCP].ack  # 수신한 패킷의 Ack 번호를 Seq로 설정
-        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)  # 수신한 패킷의 Seq 번호에 데이터 길이만큼 더한 값을 Ack로 설정
+        self.seq = self.last_recv[TCP].ack
+        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
-        if self.last_recv[TCP].flags == 0x12:
-            print("INFO (PEV) : Recieved SYNACK")
-            self.startSession()
         if "F" in self.last_recv[TCP].flags:
             self.fin()
             return
         if "P" not in self.last_recv[TCP].flags:
             return
 
-        self.lastMessageTime = time.time()
-
-        # Raw 레이어가 있는지 확인하고, 패스워드 검증
+        # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
-            received_password = pkt[Raw].load.decode()
-            if received_password == self.password:
-                print("Password verification successful!")
-                # 비밀번호가 검증된 후에 Seq와 Ack 번호를 업데이트
-                self.seq = self.seq + 1  # Seq 번호를 증가시킴
-                self.sendNextV2GMessage()
+            try:
+                received_password = pkt[Raw].load.decode('utf-8')
+                if received_password == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
+                    self.sendPasswordResponse(pkt)
+                    return  # 패스워드 전송 후 나머지 처리를 중단합니다.
+            except UnicodeDecodeError:
+                print("Received non-UTF-8 data, processing as binary data.")
+                # 예외 발생 시 처리 로직을 추가할 수 있습니다.
                 return
-            else:
-                print("Password verification failed!")
-                # 오류 처리 또는 연결 종료
-                self.terminateSession()
-                return  # 패스워드가 틀리면 더 이상 진행하지 않도록 함
 
         # 이후의 V2GTP 처리 과정
-        data = self.last_recv[Raw].load
-        v2g = V2GTP(data)
-        payload = v2g.Payload
+        try:
+            data = self.last_recv[Raw].load
+            v2g = V2GTP(data)
+            payload = v2g.Payload
+        except Exception as e:
+            print(f"Error processing V2GTP data: {e}")
+            return
+
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
@@ -612,7 +609,6 @@ class _TCPHandler:
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
-
 
     def sendNextV2GMessage(self):
         # 다음 V2G 메시지를 생성하고 전송하는 로직
