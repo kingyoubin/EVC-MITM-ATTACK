@@ -588,7 +588,7 @@ class _TCPHandler:
             received_password = pkt[Raw].load.decode()
             if received_password == self.password:
                 print("Password verification successful!")
-                # 통신 계속 진행
+                self.ack += len(received_password)  # 비밀번호의 길이만큼 ACK 번호 증가
                 self.sendNextV2GMessage()
             else:
                 print("Password verification failed!")
@@ -613,9 +613,9 @@ class _TCPHandler:
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
 
     def sendNextV2GMessage(self):
-        # 다음 V2G 메시지를 생성하고 전송하는 로직을 여기에 추가
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
+        self.seq += 1  # 비밀번호 전송 후 Seq 번호 증가
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
         
     def buildV2G(self, payload):
