@@ -58,7 +58,7 @@ class PEV:
         self.exi = EXIProcessor(self.protocol)
 
         self.slac = _SLACHandler(self)
-        self.tcp = _TCPHandler(self)
+        self.tcp = _TCPHandler(self, self.password)
 
         # I2C bus for relays
         # self.bus = SMBus(1) PWM 사용시 설치
@@ -409,6 +409,7 @@ class _TCPHandler:
     def __init__(self, pev: PEV):
         self.pev = pev
         self.iface = self.pev.iface
+        self.password = password  # 패스워드 저장
 
         self.sourceMAC = self.pev.sourceMAC
         self.sourceIP = self.pev.sourceIP
