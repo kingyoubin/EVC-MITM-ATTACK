@@ -520,11 +520,17 @@ class _TCPHandler:
                 if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
                     self.sendPasswordResponse(pkt)
                     return  # 패스워드 전송 후 나머지 처리를 중단합니다.
-                else:
-                    print(f"Received unexpected text data: {received_data}")
             except UnicodeDecodeError:
-                print("Received non-UTF-8 data, processing as binary data.")
-                print(f"Raw data: {pkt[Raw].load}")  # Raw 데이터를 출력하여 확인
+                print("Received non-UTF-8 data, processing as EXI binary data.")
+                print(f"Raw data: {pkt[Raw].load}")
+
+                # EXI 데이터 처리
+                exi_data = pkt[Raw].load
+                exi_decoded = self.getEXIFromPayload(exi_data)
+                if exi_decoded:
+                    sendp(self.buildV2G(binascii.unhexlify(exi_decoded)), iface=self.iface, verbose=0)
+                else:
+                    print("Failed to decode EXI data.")
 
         # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
@@ -575,13 +581,11 @@ class _TCPHandler:
         return ethLayer / ipLayer / tcpLayer / v2gLayer
 
     def getEXIFromPayload(self, data):
-        data = binascii.hexlify(data)
         try:
-            xmlString = self.exi.decode(data)
+            xmlString = self.exi.decode(binascii.hexlify(data))
             if not xmlString:
                 raise ValueError("Decoded XML string is empty or None.")
 
-            # xmlString이 bytes 객체라면, 이를 문자열로 변환합니다.
             if isinstance(xmlString, bytes):
                 xmlString = xmlString.decode('utf-8')
 
