@@ -508,26 +508,24 @@ class _TCPHandler:
         # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
             try:
-                received_data = pkt[Raw].load.decode('utf-8')
-                if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
+                received_password = pkt[Raw].load.decode('utf-8')
+                if received_password == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
                     self.sendPasswordResponse(pkt)
                     return  # 패스워드 전송 후 나머지 처리를 중단합니다.
             except UnicodeDecodeError:
-                print("Received non-UTF-8 data, processing as EXI binary data.")
-                print(f"Raw data: {pkt[Raw].load}")
-
-                # EXI 데이터 처리
-                exi_data = pkt[Raw].load
-                exi_decoded = self.getEXIFromPayload(exi_data)
-                if exi_decoded:
-                    sendp(self.buildV2G(binascii.unhexlify(exi_decoded)), iface=self.iface, verbose=0)
-                else:
-                    print("Failed to decode EXI data.")
+                print("Received non-UTF-8 data, processing as binary data.")
+                # 예외 발생 시 처리 로직을 추가할 수 있습니다.
+                return
 
         # 이후의 V2GTP 처리 과정
-        data = self.last_recv[Raw].load
-        v2g = V2GTP(data)
-        payload = v2g.Payload
+        try:
+            data = self.last_recv[Raw].load
+            v2g = V2GTP(data)
+            payload = v2g.Payload
+        except Exception as e:
+            print(f"Error processing V2GTP data: {e}")
+            return
+
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
