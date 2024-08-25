@@ -514,17 +514,17 @@ class _TCPHandler:
             return
 
         # 패스워드 요청이 있는지 확인
-    if pkt.haslayer(Raw):
-        try:
-            received_data = pkt[Raw].load.decode('utf-8')
-            if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
-                self.sendPasswordResponse(pkt)
-                return  # 패스워드 전송 후 나머지 처리를 중단합니다.
-            else:
-                print(f"Received unexpected text data: {received_data}")
-        except UnicodeDecodeError:
-            print("Received non-UTF-8 data, processing as binary data.")
-            print(f"Raw data: {pkt[Raw].load}")  # Raw 데이터를 출력하여 확인
+        if pkt.haslayer(Raw):
+            try:
+                received_data = pkt[Raw].load.decode('utf-8')
+                if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
+                    self.sendPasswordResponse(pkt)
+                    return  # 패스워드 전송 후 나머지 처리를 중단합니다.
+                else:
+                    print(f"Received unexpected text data: {received_data}")
+            except UnicodeDecodeError:
+                print("Received non-UTF-8 data, processing as binary data.")
+                print(f"Raw data: {pkt[Raw].load}")  # Raw 데이터를 출력하여 확인
 
         # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
