@@ -1,4 +1,5 @@
 import sys, os
+
 sys.path.append("./external_libs/HomePlugPWN")
 sys.path.append("./external_libs/V2GInjector/core")
 
@@ -541,7 +542,6 @@ class _TCPHandler:
         self.sendPasswordRequest()
         
         # 이후 XML 처리 및 통신 계속 진행
-        self.seq += 1  # Seq 번호 증가
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
@@ -563,35 +563,35 @@ class _TCPHandler:
         self.seq = self.last_recv[TCP].ack
         self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
+        if self.last_recv[TCP].flags == 0x12:
+            print("INFO (PEV) : Recieved SYNACK")
+            self.startSession()
         if "F" in self.last_recv[TCP].flags:
             self.fin()
             return
         if "P" not in self.last_recv[TCP].flags:
             return
 
-        # 패스워드 요청이 있는지 확인
+        self.lastMessageTime = time.time()
+
+        # Raw 레이어가 있는지 확인하고, 패스워드 검증
         if pkt.haslayer(Raw):
-            try:
-                received_data = pkt[Raw].load.decode('utf-8')  # UTF-8로 디코딩 시도
-                if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
-                    self.sendPasswordResponse(pkt)
-                    return  # 패스워드 전송 후 나머지 처리를 중단합니다.
-                else:
-                    print(f"Received unexpected data: {received_data}")
-            except UnicodeDecodeError:
-                print("Received non-UTF-8 data, processing as binary data.")
-                # 바이너리 데이터로 처리하는 로직을 추가할 수 있습니다.
-                return  # 이 경우 디코딩 오류 발생 시 추가 처리를 중단합니다.
+            received_password = pkt[Raw].load.decode()
+            if received_password == self.password:
+                print("Password verification successful!")
+                # 통신 계속 진행
+                self.sendNextV2GMessage()
+            else:
+                print("Password verification failed!")
+                # 오류 처리 또는 연결 종료
+                self.terminateSession()
+                return  # 패스워드가 틀리면 더 이상 진행하지 않도록 함
 
         # 이후의 V2GTP 처리 과정
-        try:
-            data = self.last_recv[Raw].load
-            v2g = V2GTP(data)
-            payload = v2g.Payload
-        except Exception as e:
-            print(f"Error processing V2GTP data: {e}")
-            return
-
+        data = self.last_recv[Raw].load
+        v2g = V2GTP(data)
+        payload = v2g.Payload
+        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
@@ -604,17 +604,10 @@ class _TCPHandler:
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
 
     def sendNextV2GMessage(self):
-        # 다음 V2G 메시지를 생성하고 전송하는 로직
+        # 다음 V2G 메시지를 생성하고 전송하는 로직을 여기에 추가
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
-        v2g_packet = self.buildV2G(binascii.unhexlify(exi))
-        
-        # 송신할 패킷의 Seq와 Ack 번호를 올바르게 설정
-        v2g_packet[TCP].seq = self.seq
-        v2g_packet[TCP].ack = self.ack
-        
-        sendp(v2g_packet, iface=self.iface, verbose=0)
-        self.seq += len(exi)  # 송신 후 Seq 번호를 데이터 길이만큼 증가
+        sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
         
     def buildV2G(self, payload):
         ethLayer = Ether()
