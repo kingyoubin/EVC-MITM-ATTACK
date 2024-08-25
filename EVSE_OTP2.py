@@ -507,18 +507,21 @@ class _TCPHandler:
         self.seq = self.last_recv[TCP].ack
         self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
-        if "F" in self.last_recv.flags:
+        if "F" in self.last_recv[TCP].flags:
             self.fin()
             return
-        if "P" not in self.last_recv.flags:
+        if "P" not in self.last_recv[TCP].flags:
             return
-        
+
         # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
-            received_data = pkt[Raw].load.decode()
-            if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
-                self.sendPasswordResponse(pkt)
-                return  # 패스워드 전송 후 나머지 처리를 중단합니다.
+            try:
+                received_data = pkt[Raw].load.decode('utf-8')
+                if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
+                    self.sendPasswordResponse(pkt)
+                    return  # 패스워드 전송 후 나머지 처리를 중단합니다.
+            except UnicodeDecodeError:
+                print("Received non-UTF-8 data, skipping password check.")
 
         # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
@@ -534,7 +537,6 @@ class _TCPHandler:
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
-
 
     def sendPasswordResponse(self, pkt):
         password_packet = self.buildPasswordPacket()
