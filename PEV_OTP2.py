@@ -568,9 +568,9 @@ class _TCPHandler:
     
 
     def handlePacket(self, pkt):
-        self.last_recv = pkt
-        self.seq = self.last_recv[TCP].ack
-        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
+    # 상대방이 보낸 패킷의 Seq와 Ack 번호를 이용하여 내 시퀀스와 응답 번호를 업데이트
+        self.seq = pkt[TCP].ack
+        self.ack = pkt[TCP].seq + len(pkt[TCP].payload)
 
         if "F" in self.last_recv[TCP].flags:
             self.fin()
@@ -580,35 +580,26 @@ class _TCPHandler:
 
         # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
-            try:
-                received_password = pkt[Raw].load.decode('utf-8')
-                if received_password == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
-                    self.sendPasswordResponse(pkt)
-                    return  # 패스워드 전송 후 나머지 처리를 중단합니다.
-            except UnicodeDecodeError:
-                print("Received non-UTF-8 data, processing as binary data.")
-                # 예외 발생 시 처리 로직을 추가할 수 있습니다.
+            received_data = pkt[Raw].load.decode('utf-8')
+            if received_data == "PASSWORD_REQUEST":
+                self.sendPasswordResponse(pkt)
                 return
 
-        # 이후의 V2GTP 처리 과정
+        # V2GTP 패킷 처리
         try:
-            data = self.last_recv[Raw].load
+            data = pkt[Raw].load
             v2g = V2GTP(data)
             payload = v2g.Payload
+            # 이후 V2G 메시지를 전송하기 전에 Seq 및 Ack 번호를 정확하게 설정
+            self.seq = pkt[TCP].ack  # 상대방이 보낸 ACK 값을 Seq로 설정
+            self.ack = pkt[TCP].seq + len(pkt[TCP].payload)  # 상대방의 Seq에 데이터 길이를 더해 ACK로 설정
+
         except Exception as e:
             print(f"Error processing V2GTP data: {e}")
             return
 
-        # Save responses to decrease load on java webserver
-        if payload in self.msgList.keys():
-            exi = self.msgList[payload]
-        else:
-            exi = self.getEXIFromPayload(payload)
-            if exi is None:
-                return
-            self.msgList[payload] = exi
-
-        sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+        # 이후 V2G 메시지를 전송
+        sendp(self.buildV2G(binascii.unhexlify(payload)), iface=self.iface, verbose=0)
 
     def sendNextV2GMessage(self):
         # 다음 V2G 메시지를 생성하고 전송하는 로직
