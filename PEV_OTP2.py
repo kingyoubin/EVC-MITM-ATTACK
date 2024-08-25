@@ -550,6 +550,7 @@ class _TCPHandler:
         self.sendPasswordRequest()
         
         # 이후 XML 처리 및 통신 계속 진행
+        self.seq += 1  # Seq 번호 증가
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
