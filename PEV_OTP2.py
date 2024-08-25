@@ -588,6 +588,7 @@ class _TCPHandler:
             if received_password == self.password:
                 print("Password verification successful!")
                 # 통신 계속 진행
+                self.sendNextV2GMessage()
             else:
                 print("Password verification failed!")
                 # 오류 처리 또는 연결 종료
@@ -610,6 +611,12 @@ class _TCPHandler:
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
 
+    def sendNextV2GMessage(self):
+        # 다음 V2G 메시지를 생성하고 전송하는 로직을 여기에 추가
+        self.xml.SupportedAppProtocolRequest()
+        exi = self.xml.getEXI()
+        sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+        
     def buildV2G(self, payload):
         ethLayer = Ether()
         ethLayer.src = self.sourceMAC
