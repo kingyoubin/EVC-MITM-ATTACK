@@ -615,69 +615,70 @@ class _TCPHandler:
 
     def getEXIFromPayload(self, data):
         data = binascii.hexlify(data)
-        xmlString = self.exi.decode(data)
-        # print(f"XML String: {xmlString}")
-        root = ET.fromstring(xmlString)
+        try:
+            xmlString = self.exi.decode(data)
+            if not xmlString:
+                raise ValueError("Decoded XML string is empty or None.")
 
-        if root.text is None:
-            if "AppProtocol" in root.tag:
-                self.xml.SessionSetupRequest()
-                return self.xml.getEXI()
+            # xmlString이 bytes 객체라면, 이를 문자열로 변환합니다.
+            if isinstance(xmlString, bytes):
+                xmlString = xmlString.decode('utf-8')
 
-            name = root[1][0].tag
-            # print(f"Response: {name}")
-            if "SessionSetupRes" in name:
-                self.xml.ServiceDiscoveryRequest()
-                self.SessionID = root[0][0].text
-            elif "ServiceDiscoveryRes" in name:
-                self.xml.ServicePaymentSelectionRequest()
-            elif "ServicePaymentSelectionRes" in name:
-                self.xml.ContractAuthenticationRequest()
-            elif "ContractAuthenticationRes" in name:
-                if root[1][0][1].text == "Ongoing":
+            root = ET.fromstring(xmlString)
+
+            if root.text is None:
+                if "AppProtocol" in root.tag:
+                    self.xml.SessionSetupRequest()
+                    return self.xml.getEXI()
+
+                name = root[1][0].tag
+                if "SessionSetupRes" in name:
+                    self.xml.ServiceDiscoveryRequest()
+                    self.SessionID = root[0][0].text
+                elif "ServiceDiscoveryRes" in name:
+                    self.xml.ServicePaymentSelectionRequest()
+                elif "ServicePaymentSelectionRes" in name:
                     self.xml.ContractAuthenticationRequest()
-                    # print("INFO (PEV) : Sending Contract Authenication Request")
-                    if self.pev.mode == RunMode.SCAN:
-                        # Start nmap scan while connection is kept alive
-                        if self.scanner == None:
-                            nmapMAC = self.pev.nmapMAC if self.pev.nmapMAC else self.destinationMAC
-                            nmapIP = self.pev.nmapIP if self.pev.nmapIP else self.destinationIP
-                            self.scanner = NMAPScanner(EmulatorType.PEV, self.pev.nmapPorts, self.iface, self.sourceMAC, self.sourceIP, nmapMAC, nmapIP)
-                        self.scanner.start()
+                elif "ContractAuthenticationRes" in name:
+                    if root[1][0][1].text == "Ongoing":
+                        self.xml.ContractAuthenticationRequest()
+                        if self.pev.mode == RunMode.SCAN:
+                            if self.scanner is None:
+                                nmapMAC = self.pev.nmapMAC if self.pev.nmapMAC else self.destinationMAC
+                                nmapIP = self.pev.nmapIP if self.pev.nmapIP else self.destinationIP
+                                self.scanner = NMAPScanner(EmulatorType.PEV, self.pev.nmapPorts, self.iface, self.sourceMAC, self.sourceIP, nmapMAC, nmapIP)
+                            self.scanner.start()
+                    else:
+                        self.xml.ChargeParameterDiscoveryRequest()
+                elif "ChargeParameterDiscoveryRes" in name:
+                    if root[1][0][1].text == "Ongoing":
+                        self.xml.ChargeParameterDiscoveryRequest()
+                    else:
+                        self.pev.setState(PEVState.C)
+                        self.xml.CableCheckRequest()
+                elif "CableCheckRes" in name:
+                    if root[1][0][2].text == "Ongoing":
+                        self.xml.CableCheckRequest()
+                    else:
+                        self.xml.PreChargeRequest()
+                elif "PreChargeRes" in name:
+                    currentVoltage = int(root[1][0][2][2].text)
+                    if abs(currentVoltage - 4000) < 10:
+                        self.xml.PowerDeliveryRequest()
+                    else:
+                        self.xml.PreChargeRequest()
+                elif "PowerDeliveryRes" in name:
+                    self.xml.CurrentDemandRequest()
+                elif "CurrentDemandRes" in name:
+                    self.xml.CurrentDemandRequest()
                 else:
-                    self.xml.ChargeParameterDiscoveryRequest()
-            elif "ChargeParameterDiscoveryRes" in name:
-                if root[1][0][1].text == "Ongoing":
-                    self.xml.ChargeParameterDiscoveryRequest()
-                else:
-                    self.pev.setState(PEVState.C)
-                    self.xml.CableCheckRequest()
-            elif "CableCheckRes" in name:
-                if root[1][0][2].text == "Ongoing":
-                    self.xml.CableCheckRequest()
-                else:
-                    self.xml.PreChargeRequest()
-            elif "PreChargeRes" in name:
-                currentVoltage = int(root[1][0][2][2].text)
-                if abs(currentVoltage - 400) < 10:
-                    self.xml.PowerDeliveryRequest()
-                else:
-                    self.xml.PreChargeRequest()
-                    # self.prechargeCount = self.prechargeCount + 1
-            # Dont know if can get passed this point without providing actual voltage
-            elif "PowerDeliveryRes" in name:
-                self.xml.CurrentDemandRequest()
-            elif "CurrentDemandRes" in name:
-                self.xml.CurrentDemandRequest()
-                # self.xml.EVRESSSOC.text = str(random.randint(0,100))
-                # self.xml.EVRESSSOC.text = str(self.soc % 100)
-                # print(f"Current SOC: {self.soc}")
-                # self.soc = self.soc + 5
-            else:
-                raise Exception(f'Packet type "{name}" not recognized')
+                    raise Exception(f'Packet type "{name}" not recognized')
 
-            self.xml.SessionID.text = self.SessionID
-            return self.xml.getEXI()
+                self.xml.SessionID.text = self.SessionID
+                return self.xml.getEXI()
+        except Exception as e:
+            print(f"Error in getEXIFromPayload: {e}")
+            return None
 
     def handshake(self):
         while not self.startSniff:

@@ -513,21 +513,23 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
+        # 패스워드 요청이 있는지 확인
         if pkt.haslayer(Raw):
             received_data = pkt[Raw].load.decode()
             if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
                 self.sendPasswordResponse(pkt)
+                return  # 패스워드 전송 후 나머지 처리를 중단합니다.
 
+        # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
-        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
         else:
             exi = self.getEXIFromPayload(payload)
-            if exi is None:
+            if exi == None:
                 return
             self.msgList[payload] = exi
 
@@ -569,64 +571,68 @@ class _TCPHandler:
 
     def getEXIFromPayload(self, data):
         data = binascii.hexlify(data)
-        xmlString = self.exi.decode(data)
+        try:
+            xmlString = self.exi.decode(data)
+            if not xmlString:
+                raise ValueError("Decoded XML string is empty or None.")
 
-        # xmlString이 bytes 객체라면, 이를 문자열로 변환합니다.
-        if isinstance(xmlString, bytes):
-            xmlString = xmlString.decode('utf-8')
+            # xmlString이 bytes 객체라면, 이를 문자열로 변환합니다.
+            if isinstance(xmlString, bytes):
+                xmlString = xmlString.decode('utf-8')
 
-        root = ET.fromstring(xmlString)
+            root = ET.fromstring(xmlString)
 
-        if root.text is None:
-            if root[0].tag == "AppProtocol":
-                self.xml.SupportedAppProtocolResponse()
+            if root.text is None:
+                if root[0].tag == "AppProtocol":
+                    self.xml.SupportedAppProtocolResponse()
+                    return self.xml.getEXI()
+
+                name = root[1][0].tag
+                print(f"Request: {name}")
+                if "SessionSetupReq" in name:
+                    self.xml.SessionSetupResponse()
+                elif "ServiceDiscoveryReq" in name:
+                    self.xml.ServiceDiscoveryResponse()
+                elif "ServicePaymentSelectionReq" in name:
+                    self.xml.ServicePaymentSelectionResponse()
+                elif "ContractAuthenticationReq" in name:
+                    self.xml.ContractAuthenticationResponse()
+                    if self.evse.mode == RunMode.STOP:
+                        self.xml.EVSEProcessing.text = "Ongoing"
+                    elif self.evse.mode == RunMode.SCAN:
+                        self.xml.EVSEProcessing.text = "Ongoing"
+                        if self.scanner is None:
+                            nmapMAC = self.evse.nmapMAC if self.evse.nmapMAC else self.destinationMAC
+                            nmapIP = self.evse.nmapIP if self.evse.nmapIP else self.destinationIP
+                            self.scanner = NMAPScanner(EmulatorType.EVSE, self.evse.nmapPorts, self.iface, self.sourceMAC, self.sourceIP, nmapMAC, nmapIP)
+                        self.scanner.start()
+                elif "ChargeParameterDiscoveryReq" in name:
+                    self.xml.ChargeParameterDiscoveryResponse()
+                    self.xml.MaxCurrentLimitValue.text = "5"
+                elif "CableCheckReq" in name:
+                    self.xml.CableCheckResponse()
+                elif "PreChargeReq" in name:
+                    self.xml.PreChargeResponse()
+                    self.xml.Multiplier.text = root[1][0][1][0].text
+                    self.xml.Value.text = root[1][0][1][2].text
+                elif "PowerDeliveryReq" in name:
+                    self.xml.PowerDeliveryResponse()
+                elif "CurrentDemandReq" in name:
+                    self.xml.CurrentDemandResponse()
+                    self.xml.CurrentMultiplier.text = root[1][0][1][0].text
+                    self.xml.CurrentValue.text = root[1][0][1][2].text
+                    self.xml.VoltageMultiplier.text = root[1][0][8][0].text
+                    self.xml.VoltageValue.text = root[1][0][8][2].text
+                    self.xml.CurrentLimitValue.text = "5"
+                elif "SessionStopReq" in name:
+                    self.running = False
+                    self.xml.SessionStopResponse()
+                else:
+                    raise Exception(f'Packet type "{name}" not recognized')
                 return self.xml.getEXI()
-            
-            name = root[1][0].tag
-            print(f"Request: {name}")
-            if "SessionSetupReq" in name:
-                self.xml.SessionSetupResponse()
-            elif "ServiceDiscoveryReq" in name:
-                self.xml.ServiceDiscoveryResponse()
-            elif "ServicePaymentSelectionReq" in name:
-                self.xml.ServicePaymentSelectionResponse()
-            elif "ContractAuthenticationReq" in name:
-                self.xml.ContractAuthenticationResponse()
-                if self.evse.mode == RunMode.STOP:
-                    self.xml.EVSEProcessing.text = "Ongoing"
-                elif self.evse.mode == RunMode.SCAN:
-                    self.xml.EVSEProcessing.text = "Ongoing"
-                    # Start nmap scan while connection is kept alive
-                    if self.scanner == None:
-                        nmapMAC = self.evse.nmapMAC if self.evse.nmapMAC else self.destinationMAC
-                        nmapIP = self.evse.nmapIP if self.evse.nmapIP else self.destinationIP
-                        self.scanner = NMAPScanner(EmulatorType.EVSE, self.evse.nmapPorts, self.iface, self.sourceMAC, self.sourceIP, nmapMAC, nmapIP)
-                    self.scanner.start()
-            elif "ChargeParameterDiscoveryReq" in name:
-                self.xml.ChargeParameterDiscoveryResponse()
-                # self.xml.MinCurrentLimitValue.text = "0"
-                self.xml.MaxCurrentLimitValue.text = "5"
-            elif "CableCheckReq" in name:
-                self.xml.CableCheckResponse()
-            elif "PreChargeReq" in name:
-                self.xml.PreChargeResponse()
-                self.xml.Multiplier.text = root[1][0][1][0].text
-                self.xml.Value.text = root[1][0][1][2].text
-            elif "PowerDeliveryReq" in name:
-                self.xml.PowerDeliveryResponse()
-            elif "CurrentDemandReq" in name:
-                self.xml.CurrentDemandResponse()
-                self.xml.CurrentMultiplier.text = root[1][0][1][0].text
-                self.xml.CurrentValue.text = root[1][0][1][2].text
-                self.xml.VoltageMultiplier.text = root[1][0][8][0].text
-                self.xml.VoltageValue.text = root[1][0][8][2].text
-                self.xml.CurrentLimitValue.text = "5"
-            elif "SessionStopReq" in name:
-                self.running = False
-                self.xml.SessionStopResponse()
-            else:
-                raise Exception(f'Packet type "{name}" not recognized')
-            return self.xml.getEXI()
+        except Exception as e:
+            print(f"Error in getEXIFromPayload: {e}")
+            return None
 
     def startNeighborSolicitationSniff(self):
         sniff(iface=self.iface, prn=self.sendNeighborSoliciation)
