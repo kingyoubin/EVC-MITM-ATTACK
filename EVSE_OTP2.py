@@ -572,14 +572,18 @@ class _TCPHandler:
     def getEXIFromPayload(self, data):
         data = binascii.hexlify(data)
         xmlString = self.exi.decode(data)
-        # print(f"XML String: {xmlString}")
+
+        # xmlString이 bytes 객체라면, 이를 문자열로 변환합니다.
+        if isinstance(xmlString, bytes):
+            xmlString = xmlString.decode('utf-8')
+
         root = ET.fromstring(xmlString)
 
         if root.text is None:
             if root[0].tag == "AppProtocol":
                 self.xml.SupportedAppProtocolResponse()
                 return self.xml.getEXI()
-
+            
             name = root[1][0].tag
             print(f"Request: {name}")
             if "SessionSetupReq" in name:
