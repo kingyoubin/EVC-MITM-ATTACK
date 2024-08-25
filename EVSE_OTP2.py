@@ -40,7 +40,7 @@ class EVSE:
         self.nmapMAC = args.nmap_mac[0] if args.nmap_mac else ""
         self.nmapIP = args.nmap_ip[0] if args.nmap_ip else ""
         self.nmapPorts = []
-        self.input_password = input("Please enter the 4-digit password: ")
+        self.password = input("Please enter the 4-digit password: ")
         if args.nmap_ports:
             for arg in args.nmap_port[0].split(','):
                 if "-" in arg:
