@@ -521,7 +521,7 @@ class _TCPHandler:
                     self.sendPasswordResponse(pkt)
                     return  # 패스워드 전송 후 나머지 처리를 중단합니다.
             except UnicodeDecodeError:
-                print("Received non-UTF-8 data, skipping password check.")
+                print("Received non-UTF-8 data, processing as binary data.")
 
         # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
@@ -532,7 +532,7 @@ class _TCPHandler:
             exi = self.msgList[payload]
         else:
             exi = self.getEXIFromPayload(payload)
-            if exi == None:
+            if exi is None:
                 return
             self.msgList[payload] = exi
 
