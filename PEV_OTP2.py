@@ -569,8 +569,8 @@ class _TCPHandler:
 
     def handlePacket(self, pkt):
         self.last_recv = pkt
-        self.seq = self.last_recv[TCP].ack
-        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
+        self.seq = self.last_recv[TCP].ack  # 수신한 패킷의 Ack 번호를 Seq로 설정
+        self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)  # 수신한 패킷의 Seq 번호에 데이터 길이만큼 더한 값을 Ack로 설정
 
         if self.last_recv[TCP].flags == 0x12:
             print("INFO (PEV) : Recieved SYNACK")
@@ -588,8 +588,10 @@ class _TCPHandler:
             received_password = pkt[Raw].load.decode()
             if received_password == self.password:
                 print("Password verification successful!")
-                self.ack += len(received_password)  # 비밀번호의 길이만큼 ACK 번호 증가
+                # 비밀번호가 검증된 후에 Seq와 Ack 번호를 업데이트
+                self.seq = self.seq + 1  # Seq 번호를 증가시킴
                 self.sendNextV2GMessage()
+                return
             else:
                 print("Password verification failed!")
                 # 오류 처리 또는 연결 종료
@@ -600,7 +602,6 @@ class _TCPHandler:
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
-        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
@@ -612,11 +613,19 @@ class _TCPHandler:
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
 
+
     def sendNextV2GMessage(self):
+        # 다음 V2G 메시지를 생성하고 전송하는 로직
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
-        self.seq += 1  # 비밀번호 전송 후 Seq 번호 증가
-        sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
+        v2g_packet = self.buildV2G(binascii.unhexlify(exi))
+        
+        # 송신할 패킷의 Seq와 Ack 번호를 올바르게 설정
+        v2g_packet[TCP].seq = self.seq
+        v2g_packet[TCP].ack = self.ack
+        
+        sendp(v2g_packet, iface=self.iface, verbose=0)
+        self.seq += len(exi)  # 송신 후 Seq 번호를 데이터 길이만큼 증가
         
     def buildV2G(self, payload):
         ethLayer = Ether()
