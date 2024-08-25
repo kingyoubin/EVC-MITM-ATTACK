@@ -571,6 +571,11 @@ class _TCPHandler:
     # 상대방이 보낸 패킷의 Seq와 Ack 번호를 이용하여 내 시퀀스와 응답 번호를 업데이트
         self.seq = pkt[TCP].ack
         self.ack = pkt[TCP].seq + len(pkt[TCP].payload)
+        
+        if not pkt.haslayer(TCP):
+            return  # TCP 레이어가 없는 경우 처리하지 않음
+
+        self.last_recv = pkt
 
         if "F" in self.last_recv[TCP].flags:
             self.fin()

@@ -505,6 +505,11 @@ class _TCPHandler:
     def handlePacket(self, pkt):
         self.seq = pkt[TCP].ack
         self.ack = pkt[TCP].seq + len(pkt[TCP].payload)
+        
+        if not pkt.haslayer(TCP):
+            return  # TCP 레이어가 없는 경우 처리하지 않음
+
+        self.last_recv = pkt
 
         if pkt.haslayer(Raw):
             try:
