@@ -548,14 +548,7 @@ class _TCPHandler:
         
         self.sendPasswordRequest()
         
-        received_password = pkt[Raw].load.decode()
-        if received_password == self.pev.password:
-            print("Password verification successful!")
-            # 통신 계속 진행
-        else:
-            print("Password verification failed!")
-            self.terminateSession()
-        
+        # 이후 XML 처리 및 통신 계속 진행
         self.xml.SupportedAppProtocolRequest()
         exi = self.xml.getEXI()
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
@@ -577,26 +570,40 @@ class _TCPHandler:
         self.seq = self.last_recv[TCP].ack
         self.ack = self.last_recv[TCP].seq + len(self.last_recv[TCP].payload)
 
-        if self.last_recv.flags == 0x12:
+        if self.last_recv[TCP].flags == 0x12:
             print("INFO (PEV) : Recieved SYNACK")
             self.startSession()
-        if "F" in self.last_recv.flags:
+        if "F" in self.last_recv[TCP].flags:
             self.fin()
             return
-        if "P" not in self.last_recv.flags:
+        if "P" not in self.last_recv[TCP].flags:
             return
 
         self.lastMessageTime = time.time()
 
+        # Raw 레이어가 있는지 확인하고, 패스워드 검증
+        if pkt.haslayer(Raw):
+            received_password = pkt[Raw].load.decode()
+            if received_password == self.password:
+                print("Password verification successful!")
+                # 통신 계속 진행
+            else:
+                print("Password verification failed!")
+                # 오류 처리 또는 연결 종료
+                self.terminateSession()
+                return  # 패스워드가 틀리면 더 이상 진행하지 않도록 함
+
+        # 이후의 V2GTP 처리 과정
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
+        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
         else:
             exi = self.getEXIFromPayload(payload)
-            if exi == None:
+            if exi is None:
                 return
             self.msgList[payload] = exi
 

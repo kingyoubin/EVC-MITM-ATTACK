@@ -513,38 +513,36 @@ class _TCPHandler:
         if "P" not in self.last_recv.flags:
             return
         
-        if self.isPasswordRequestPacket(pkt):
-            self.sendPasswordResponse(pkt)
-        elif self.isPasswordPacket(pkt):
-            self.verifyPassword(pkt)
-        self.lastMessageTime = time.time()
+        if pkt.haslayer(Raw):
+            received_data = pkt[Raw].load.decode()
+            if received_data == "PASSWORD_REQUEST":  # PEV에서 보내온 비밀번호 요청
+                self.sendPasswordResponse(pkt)
 
         data = self.last_recv[Raw].load
         v2g = V2GTP(data)
         payload = v2g.Payload
+        
         # Save responses to decrease load on java webserver
         if payload in self.msgList.keys():
             exi = self.msgList[payload]
         else:
             exi = self.getEXIFromPayload(payload)
-            if exi == None:
+            if exi is None:
                 return
             self.msgList[payload] = exi
 
         sendp(self.buildV2G(binascii.unhexlify(exi)), iface=self.iface, verbose=0)
 
-    def isPasswordRequestPacket(self, pkt):
-        return pkt.haslayer(Raw) and pkt[Raw].load.decode() == "PASSWORD_REQUEST"
 
     def sendPasswordResponse(self, pkt):
-        password_packet = self.buildPasswordPacket(self.evse.password, pkt)  # pkt 변수를 함께 전달
+        password_packet = self.buildPasswordPacket()
         sendp(password_packet, iface=self.iface, verbose=0)
 
-    def buildPasswordPacket(self, password, pkt):  # pkt 변수를 추가로 받아옴
-        ethLayer = Ether(src=self.sourceMAC, dst=pkt[Ether].src)
-        ipLayer = IPv6(src=self.sourceIP, dst=pkt[IPv6].src)
-        tcpLayer = TCP(sport=self.sourcePort, dport=pkt[TCP].sport, flags="PA", seq=self.seq, ack=self.ack)
-        passwordLayer = Raw(load=password.encode())
+    def buildPasswordPacket(self):
+        ethLayer = Ether(src=self.sourceMAC, dst=self.destinationMAC)
+        ipLayer = IPv6(src=self.sourceIP, dst=self.destinationIP)
+        tcpLayer = TCP(sport=self.sourcePort, dport=self.destinationPort, flags="PA", seq=self.seq, ack=self.ack)
+        passwordLayer = Raw(load=self.evse.password.encode())  # 4자리 패스워드 전송
         return ethLayer / ipLayer / tcpLayer / passwordLayer
 
     def buildV2G(self, payload):
