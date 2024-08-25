@@ -1,3 +1,4 @@
+import sys, os
 sys.path.append("./external_libs/HomePlugPWN")
 sys.path.append("./external_libs/V2GInjector/core")
 
