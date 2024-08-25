@@ -537,10 +537,10 @@ class _TCPHandler:
         return pkt.haslayer(Raw) and pkt[Raw].load.decode() == "PASSWORD_REQUEST"
 
     def sendPasswordResponse(self, pkt):
-        password_packet = self.buildPasswordPacket(self.evse.password)
+        password_packet = self.buildPasswordPacket(self.evse.password, pkt)  # pkt 변수를 함께 전달
         sendp(password_packet, iface=self.iface, verbose=0)
 
-    def buildPasswordPacket(self, password):
+    def buildPasswordPacket(self, password, pkt):  # pkt 변수를 추가로 받아옴
         ethLayer = Ether(src=self.sourceMAC, dst=pkt[Ether].src)
         ipLayer = IPv6(src=self.sourceIP, dst=pkt[IPv6].src)
         tcpLayer = TCP(sport=self.sourcePort, dport=pkt[TCP].sport, flags="PA", seq=self.seq, ack=self.ack)
